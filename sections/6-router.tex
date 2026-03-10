@@ -1,0 +1,414 @@
+\newpage
+\section{Configuration Control}
+\label{sec:controller}
+
+% Chapter purpose: Formalize the decision problem, define quality labeling,
+% quantify the oracle ceiling, characterize available signals.
+% All data from HotpotQA (1,199 queries x 8 configs = 9,561 valid sessions).
+% No model results — those belong to Chapter 7.
+
+
+\subsection{Problem Formulation}
+\label{subsec:decision-problem}
+
+We showed that optional modules impose
+asymmetric costs with inconsistent quality returns. This raises a practical
+question: can we choose which modules to activate on a per-query basis, before
+executing the pipeline?
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.85\textwidth]{modules.png}
+\caption{Decision process}
+\label{fig:decision-process}
+\end{figure}
+
+If the sole objective is energy, the answer is trivial: always run C0 (minimal
+pipeline) at 318~J per request. No routing model is needed; a static rule
+suffices. However, a cheapest-always policy ignores quality. Some queries need
+reranking or hybrid retrieval to produce an acceptable answer; routing every
+query to C0 sacrifices those responses.
+
+The routing literature addresses this tension through quality-aware selection.
+Adaptive-RAG~\cite{adaptiverag2024} classifies query complexity to choose a
+retrieval strategy. RouteLLM~\cite{routellm2025} frames model selection as
+choosing the cheapest model that exceeds a quality threshold. Our setting is
+analogous: among all configurations that produce acceptable quality for a given
+query, select the one with the lowest energy cost. We call this the
+\emph{cheapest acceptable} principle.
+
+Formally, given a query~$q$, the oracle selects:
+%
+\begin{equation}
+c^*(q) = \arg\min_{c \in \mathcal{C}} \; E(q, c) \quad
+\text{subject to} \quad a(q, c) = 1
+\label{eq:oracle}
+\end{equation}
+%
+where $E(q,c)$ is the energy consumed by query~$q$ under configuration~$c$, and
+$a(q,c) \in \{0,1\}$ indicates whether the response meets an acceptability
+threshold. This formulation is an oracle: it requires knowing quality outcomes
+before execution.
+
+A practical router $f: \mathcal{X} \to \mathcal{C}$ must predict from
+pre-execution query features~$\mathcal{X}$ alone, without observing $E(q,c)$ or
+$a(q,c)$. When no configuration is predicted acceptable, the router falls back
+to~C7 (all modules enabled) as a safety default.
+
+
+\subsection{Quality Labeling}
+\label{subsec:quality-labeling}
+
+Implementing the cheapest-acceptable principle requires defining
+``acceptable.'' This means selecting quality metrics and setting thresholds.
+
+We have 2 metric families available: 
+\begin{itemize}
+      \item HotpotQA-specific deterministic scores: Answer~F1, Supporting~Facts~F1 and
+Joint~F1. They measure token-level and title-level overlap. 
+%(Section~\ref{sec:method_protocol})
+      \item RAGAS LLM-judged metrics: factual correctness and
+faithfulness. They capture semantic agreement and hallucination.
+%(Section~\ref{subsec:energy-quality})
+
+\end{itemize}
+
+Table~\ref{tab:hotpot-comparison} shows the quality benchmark scores against
+published and source baselines. The Answer~F1 gap is an artefact: our pipeline
+generates verbose answers against short-span references, deflating
+token-level~F1. Despite an Ans~F1 of 12.1\%, RAGAS factual correctness
+averages 0.62, confirming that a majority of answers are semantically correct.
+Because the benchmark format mismatch renders Ans~F1 unreliable as a
+per-response quality signal and re-conducting the evaluation was not feasible
+within the project timeline, we cannot use it for routing labels.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{l c c c}
+\hline
+\textbf{System} & \textbf{Ans F1} & \textbf{Sup F1} & \textbf{Joint F1} \\
+\hline
+Yang et al.\ (2018) baseline~\cite{hotpotqa2018}
+    & 59.02 & 64.49$^\dagger$ & 40.16 \\
+% Beam Retrieval~\cite{beamretrieval2024} --- SOTA
+%     & 85.04 & 90.09$^\dagger$ & 77.54 \\
+\hline
+CITI KMS --- best config (C6)
+    & 12.1$^\ddagger$ & 55.6$^*$ & 5.1 \\
+CITI KMS --- mean over 8 configs
+    & 11.7$^\ddagger$ & 54.5$^*$ & 4.9 \\
+\hline
+\multicolumn{4}{l}{\footnotesize $^\dagger$\,Sentence-level granularity. \;
+    $^*$\,Title-level granularity (coarser, not directly comparable).} \\
+\multicolumn{4}{l}{\footnotesize $^\ddagger$\,Verbose answers vs.\ short-span references deflate token-level F1.}
+\end{tabular}
+\caption{HotpotQA distractor-setting quality comparison (F1 scores, \%).}
+\label{tab:hotpot-comparison}
+\end{table}
+
+% Our system reports the best single-configuration result (C6).
+%          Sup is measured at title level for our system and at sentence level
+%          for the leaderboard entries.
+
+\paragraph{Metric selection via ICC.}
+Metrics can be suited for \emph{system evaluation} (comparing pipelines in
+aggregate) and not necessarily for \emph{routing supervision}, which
+requires per-query discrimination between configurations. We use the
+Intraclass Correlation Coefficient (ICC) to distinguish the two. ICC measures
+the fraction of total variance attributable to query identity versus
+configuration choice: high ICC means configurations produce nearly identical
+scores for a given query, leaving no signal for routing.
+
+Prior work uses deterministic quality metrics---F1, exact match---as
+routing supervision signals~\cite{metis2025,adaptiverag2024,routellm2025}.
+Our ICC analysis shows that these scores barely change across
+configurations for a given query on HotpotQA, making them unsuitable for
+routing despite their value in system-level evaluation. Faithfulness
+(ICC\,=\,0.432) shows the strongest routing signal among quality metrics.
+Post-retrieval scores (context precision, ICC\,=\,0.878) are
+query-dominated and provide no discriminative value.
+
+Concretely, Ans~F1 (ICC\,=\,0.825) and Joint~F1 (ICC\,=\,0.822) are
+nearly query-determined: for a given query, all configurations produce
+near-identical F1 scores. This explains why prior routing work using F1 or
+exact-match as supervision targets may overstate routing effectiveness. When
+the metric barely varies across configurations, any router appears to
+``match'' the oracle.
+
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{l c l}
+\hline
+\textbf{Metric} & \textbf{ICC} & \textbf{Interpretation} \\
+\hline
+Faithfulness              & 0.432 & Best routing potential \\
+Factual correctness       & 0.583 & Moderate routing potential \\
+Context recall            & 0.670 & Limited \\
+Sup F1                    & 0.695 & Limited \\
+Ans F1                    & 0.825 & Query-dominated \\
+Joint F1                  & 0.822 & Query-dominated \\
+Context precision         & 0.878 & Query-dominated \\
+\hline
+\end{tabular}
+\caption{ICC for candidate routing metrics.}
+\label{tab:icc}
+\end{table}
+
+Factual correctness and faithfulness carry the between-configuration variance
+that routing requires. We use both as a joint acceptability gate.
+
+\paragraph{Metrics distribution.}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.90\linewidth]{metrics_distribution.png}
+  \caption{Distribution of factual correctness and faithfulness}
+  \label{fig:metrics-distribution}
+\end{figure}
+
+Faithfulness is bimodal: a dominant cluster at 1.0 indicates that most 
+retrieved contexts fully support the generated claims, while a spread of 
+lower values captures sessions where the pipeline hallucinates.
+Factual correctness follows a broader distribution with a spike at 0.0,
+representing queries that every configuration fails and a gradual rise toward higher scores.
+These shapes motivate the binary gate below: a threshold must separate the high-score mass 
+from the failure tails of both metrics.
+
+
+\paragraph{Acceptability thresholds.}
+A response is \emph{acceptable} if and only if:
+%
+\begin{equation}
+a(q, c) = \mathbf{1}\bigl[\text{fc}(q,c) \geq \tau_{fc}\bigr]
+\;\cdot\;
+\mathbf{1}\bigl[\text{faith}(q,c) \geq \tau_{faith}\bigr]
+\label{eq:acceptability}
+\end{equation}
+
+
+with default thresholds $\tau_{fc} = 0.7$ and $\tau_{faith} = 0.7$.
+At 0.7, the label distribution is balanced enough for classification
+(C0~38\%, C3~32\%, C2/C6~15\% each); lower thresholds collapse labels
+toward~C0. The 70\% floor represents meaningful quality, below it, answers
+contain substantive errors, while preserving a routable set of 755~queries
+(63\%) sufficient for training.
+At these thresholds 33.9\% of sessions (3{'}245 of 9{'}600) pass both criteria.
+
+\paragraph{Label construction.}
+For each query~$q$, the label is the cheapest acceptable configuration:
+
+\begin{equation}
+\ell(q) = \arg\min_{c \in \mathcal{C}} E(q,c)
+\quad \text{subject to} \quad a(q,c) = 1
+\label{eq:label}
+\end{equation}
+
+When no configuration passes both gates, the optimisation in
+Equation~\ref{eq:label} is infeasible: no acceptable routing target exists.
+These 445 queries (37.0\%) are excluded from the training set because they
+carry no valid supervision signal for the cheapest-acceptable objective.
+
+The routable subset (755 queries, 63.0\%) defines the training population.
+C0 accounts for 35.8\% of labels and C3 for 28.6\%; the two cheapest
+configurations cover 64\% of routable queries.
+
+\paragraph{Threshold sensitivity.}
+The label distribution depends on the chosen thresholds. A $5 \times 5$ grid
+sweep over $\tau_{fc} \in [0.6, 1.0]$ and $\tau_{faith} \in [0.6, 1.0]$
+produces session pass rates from 25.5\% to 46.9\% and oracle energy savings
+from 55.2\% to 65.7\% versus always-C7. The default thresholds sit in the
+moderate region. The qualitative pattern (C0 and C3 domination) holds across
+all threshold combinations.
+
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.85\textwidth]{threshold_pass_rate.png}
+    \caption{Session pass rate across threshold combinations}
+    \label{fig:label-pass-rate}
+    % Source: hotpot/5-label/output/plots/threshold_pass_rate.png
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.95\textwidth]{threshold_label_shift.png}
+    \caption{Label distribution at symmetric threshold pairs}
+    \label{fig:threshold-label-shift}
+    % Source: hotpot/5-label/output/plots/threshold_label_shift.png
+\end{figure}
+
+
+\subsection{Oracle Analysis}
+\label{subsec:oracle-analysis}
+
+The oracle router (Equation~\ref{eq:oracle}) selects the cheapest acceptable
+configuration with perfect information, defining the theoretical ceiling for any
+routing strategy. At default thresholds, 63.0\% of queries (755 of 1{'}200)
+have at least one acceptable configuration. these form the
+\emph{routable set}. The remaining 37.0\% (445~queries) fail under all
+eight configurations; no routing strategy can help them.
+
+On the routable set the oracle achieves a mean energy of
+511~J per query versus 1{'}786~J for always-C7: a
+\textbf{71\% energy savings ceiling}. 64\% of routable labels go to C0 or C3
+(318~J and 324~J respectively). Non-routable queries default to~C0 (318~J),
+yielding a combined strategy of
+440~J per query (\textbf{75\% savings}).
+
+Queries decompose into three groups:
+\begin{itemize}
+      \item \emph{Config-diverse} queries (53.0\%) have 1--7 passing configurations at different energy levels; routing adds value.
+      \item \emph{All-pass} queries (10\%) pass under every configuration; routing them to~C0 saves the maximum energy.
+      \item \emph{Non-routable} queries (37.0\%) fail under every configuration; defaulting to~C0 minimises energy waste.
+\end{itemize}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.85\textwidth]{passing_configs_distribution.png}
+    \caption{Distribution of passing configurations per query}
+    \label{fig:passing-configs-dist}
+    % Source: hotpot/5-label/output/plots/passing_configs_distribution.png
+\end{figure}
+
+\paragraph{Scope reduction.}
+Given HyDE's negative aggregate quality effect at 5.3$\times$ the energy cost,
+a rational deployment default is HyDE-off. The remaining routing problem
+operates over four configurations: C0 (baseline), C2 (reranking), C3 (hybrid),
+and C6 (hybrid + reranking). This reduces the problem from 8-class to 4-class.
+Among passable queries, 89 (11.8\%) have a HyDE configuration as cheapest
+acceptable, so the 4-class reduction sacrifices a small fraction of oracle
+savings in exchange for halving the label space.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.75\textwidth]{pass_vs_select_rate.png}
+    \caption{Per-configuration pass rate versus oracle selection rate.}
+    \label{fig:pass-vs-select}
+    % Source: hotpot/5-label/output/plots/pass_vs_select_rate.png
+\end{figure}
+%All configurations pass at similar rates (33--42\%), but the oracle 
+% concentrates selections on C0 and C3 due to their
+% lower energy cost. HyDE configurations (C1, C4, C5) are
+% selected at 6--8\% despite passing at 33--41\%.
+
+
+\subsection{Feature Signal Analysis}
+\label{subsec:features-signal}
+
+Since the goal is to evaluate whether routing is possible before pipeline execution, only features computable
+from the query text and the pre-existing embedding index are used. We
+extract 23~pre-execution features in three groups (Table~\ref{tab:query-features}):
+Group~A (11 text/rule-based features, $<$1~ms), Group~B (7 NLP features via
+spaCy, 1--5~ms), and Group~C (5 embedding-based features that reuse the
+retrieval embedding at zero marginal cost).
+
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{l c l r}
+\hline
+\textbf{Feature} & \textbf{Group} & \textbf{Type} & \textbf{Cost} \\
+\hline
+q\_len\_tokens, q\_len\_chars       & A & numeric   & $<$1\,ms \\
+num\_sentences                      & A & numeric   & $<$1\,ms \\
+q\_qword                            & A & categorical & $<$1\,ms \\
+q\_is\_definition, q\_is\_list      & A & boolean   & $<$1\,ms \\
+q\_has\_logical\_operator            & A & boolean   & $<$1\,ms \\
+has\_math, has\_code                 & A & boolean   & $<$1\,ms \\
+constraint\_count, reasoning\_marker & A & numeric   & $<$1\,ms \\
+\hline
+q\_ner\_count, q\_ner\_type\_diversity & B & numeric & $<$5\,ms \\
+q\_has\_date\_entity, q\_has\_number   & B & boolean & $<$5\,ms \\
+q\_multi\_entity                       & B & boolean & $<$5\,ms \\
+q\_np\_count, q\_content\_word\_ratio  & B & numeric & $<$5\,ms \\
+\hline
+q\_emb\_norm                              & C & numeric     & -- \\
+q\_emb\_top1\_sim, q\_emb\_top2\_sim      & C & numeric     & -- \\
+q\_emb\_sim\_gap                          & C & numeric     & -- \\
+q\_sem\_cluster\_id                       & C & categorical & -- \\
+\hline
+\end{tabular}
+\caption{Pre-execution query features}
+\label{tab:query-features}
+\end{table}
+%Group~A requires string operations only,Group~B requires spaCy NLP, Group~C reuses the retrieval embedding.
+
+\paragraph{Signal strength.}
+Before building a router, we test whether individual features discriminate among
+oracle labels.  Chi-square tests on the nine boolean features find only two
+statistically significant associations ($p < 0.05$):
+\texttt{q\_has\_logical\_operator} (Cramér's $V = 0.152$, $p < 0.001$) and
+\texttt{q\_has\_date\_entity} ($V = 0.114$, $p = 0.030$).  Kruskal--Wallis
+tests on the twelve numeric features identify token count
+($\eta^2 = 0.013$, $p = 0.002$) and character length
+($\eta^2 = 0.010$, $p = 0.009$) as the strongest discriminators; all effect
+sizes remain below $\eta^2 = 0.02$, conventionally negligible.
+Figure~\ref{fig:top-discriminative-boxplots} confirms this visually: the six
+most discriminative features show heavily overlapping distributions across
+labels, with only slight median shifts (e.g.\ queries labelled C6 tend 1--2
+tokens longer).
+
+A multivariate check via cross-validated gradient-boosted regression on all
+21~features yields $R^2 = {-}0.095$ for factual correctness and
+$R^2 = {-}0.115$ for faithfulness---both worse than predicting the dataset mean.
+Statistically, pre-execution features cannot predict raw quality scores.
+
+However, the routing task is not score prediction.  The router classifies which
+pre-computed label a query receives: it need not estimate the score itself, only
+whether the cheapest acceptable configuration differs across queries.  Binary
+classification of pre-computed labels can succeed even when quality regression
+fails, provided the label boundaries align with feature-separable regions in the
+input space.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.95\textwidth]{top_discriminative_boxplots.png}
+    \caption{Top-6 discriminative features by oracle label}
+    \label{fig:top-discriminative-boxplots}
+    % Source: hotpot/5-label/output/plots/top_discriminative_boxplots.png
+\end{figure}
+
+\paragraph{Cluster structure.}
+To test whether queries group into routing-relevant regions, we apply $k$-means
+clustering on all 21~standardised features.  Silhouette analysis over
+$k \in \{3, \ldots, 7\}$ selects $k = 7$.  Profiling each cluster by its
+highest-mean-FC configuration reveals a two-regime structure: three clusters
+(41\% of queries) favour C6 at $\sim$430\,J per query, while three others
+(58\%) favour C7 at $\sim$1{'}750\,J.  One small cluster ($n = 4$) favours C3.
+The energy gap between regimes is 4$\times$, indicating that cluster membership
+carries a routing-relevant signal even though individual features do not.
+
+
+\subsection{System Constraints}
+\label{subsec:integration-constraints}
+
+The router is implemented as a pre-pipeline gate.  As part of this work, we
+extended the CITI KMS orchestrator with a per-request configuration API
+(Section~\ref{subsec:baseline-config}): the router intercepts the query,
+extracts features, predicts a configuration and passes it to the orchestrator.
+No modification to the pipeline stages themselves is required.  Total feature
+extraction overhead (1--5\,ms for spaCy; embedding features are free) is
+negligible compared to mean pipeline execution times, which range from
+982\,ms (C0) to 6{'}153\,ms (C7). We estimate the router's energy cost at
+$\sim$0.08\,J per query (CPU at $\sim$15\,W effective load $\times$ 5\,ms),
+four orders of magnitude below the cheapest pipeline (318\,J).
+
+Two constraints bound the router design:
+\begin{enumerate}
+    \item \textbf{Latency}: the routing decision should add at most tens of
+          milliseconds---within 1--1O\% of the cheapest pipeline
+          configuration.
+    \item \textbf{Simplicity}: the model must be lightweight (no GPU),
+    interpretable where possible and, in this specific case, trainable on $\sim$755~queries. 
+\end{enumerate}
+
+\paragraph{Key Idea.}
+The oracle ceiling (Section~\ref{subsec:oracle-analysis}) sets the upper bound;
+64\% of routable labels go to the two cheapest configurations.
+Pre-execution features carry near-zero quality signal ($R^2 \approx 0$),
+but label classification is a different task than score prediction.
+HyDE's negative quality effect reduces the problem from eight to four
+configurations. Chapter~\ref{sec:strategies} evaluates whether practical
+routers can capture a meaningful fraction of this ceiling.
+

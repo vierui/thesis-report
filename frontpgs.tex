@@ -1,0 +1,257 @@
+% !TEX root = main.tex
+
+% ============================================================================
+% FRONT MATTER
+% ============================================================================
+% Roman numeral page numbering for all front pages.
+% Title page is counted as page i but number is suppressed.
+% Arabic numbering resumes at the end of this file.
+
+\pagestyle{empty}
+\pagenumbering{roman}
+
+% ============================================================================
+% T I T L E   P A G E
+% ============================================================================
+
+\begin{titlepage}
+
+\newgeometry{left=0.8in, right=0.8in, top=1in, bottom=1in}
+\centering
+
+{\large \univname}
+
+\vfill
+
+{\Huge \bfseries Dynamic RAG under Energy Constraints: \\
+Characterizing the Structural\\ \vspace{0.2cm}
+Limits of Module-Level Routing}
+
+{\large\itshape \tcontext}
+
+\vspace{0.5cm}
+
+{\normalsize by}
+
+\vspace{0.5cm}
+
+{\large \href{mailto:vieirrui@students.zhaw.ch}{Rui Vieira}}
+
+\vfill
+
+{\normalsize Advisor: \supnameA\\Supervisor: \supnameB}
+
+\vspace{0.5cm}
+
+{\normalsize Host Institution:\\
+LLM Lab -- Center for IoT Innovation, \\
+National Taiwan University of Science and Technology}
+
+\vfill
+
+\begin{minipage}{0.6\textwidth}
+  \centering\small
+  Thesis submitted in partial fulfillment of the requirements\\
+  for the degree of Master of Science in Engineering
+\end{minipage}
+
+\vspace{0.5cm}
+
+{\normalsize
+  8 March 2026
+}
+
+\restoregeometry
+\end{titlepage}
+
+% Front pages: plain style with Roman numerals starting at ii
+\pagestyle{plain}
+\setcounter{page}{2}
+
+% ============================================================================
+% E X A M I N I N G   C O M M I T T E E
+% ============================================================================
+
+\cleardoublepage
+\begin{center}\textbf{\Large Examining Committee Membership}\end{center}
+\bigskip
+
+\noindent
+The following served on the Examining Committee for this thesis.
+
+\bigskip
+
+\noindent
+\begin{tabbing}
+Supervisor:\quad \= \kill
+Advisor: \> \supnameA \\
+\> \supinstituteA \\
+\> School of Engineering, Zurich University of Applied Sciences \\
+\> \href{mailto:\supmailA}{\supmailA}
+\end{tabbing}
+
+\bigskip
+
+\noindent
+\begin{tabbing}
+Supervisor:\quad \= \kill
+Supervisor: \> \supnameB \\
+\> Center for IoT Innovation \\
+\> Department of Industrial Management \\
+\> National Taiwan University of Science and Technology \\
+\> \href{mailto:\supmailB}{\supmailB}
+\end{tabbing}
+
+% ============================================================================
+% A B S T R A C T
+% ============================================================================
+
+\cleardoublepage
+\begin{center}\textbf{\Large Abstract}\end{center}
+\bigskip
+
+Chatbot assistants powered by large language models (LLMs) have seen
+rapid adoption, yet the standard Retrieval-Augmented Generation (RAG)
+architecture relies on ``always-on'' modular pipelines that are computationally
+inefficient. This thesis investigates RAG pipelines from a system perspective,
+treating energy consumption as a first-class metric to determine if selective
+module activation can reduce operational costs without compromising answer
+quality.
+
+To this end, an energy measurement framework was developed for a distributed
+four-node RAG system deployed as a knowledge management platform at the Center
+for IoT Innovation (CITI), National Taiwan University of Science and Technology.
+The framework attributes request-level energy, latency, and quality across
+infrastructure nodes and pipeline stages. Empirical analysis of 1,200 multi-hop
+queries from the HotpotQA benchmark reveals that always-on configurations are
+significantly inefficient: the full pipeline consumes 5.6$\times$ more energy
+than a minimal baseline for a marginal quality improvement of less than 0.06
+points in factual correctness. Notably, the HyDE (Hypothetical Document Embeddings)
+module accounts for the largest energy overhead while actually degrading quality in
+the studied dense-retrieval environment.
+
+To exploit this cost-quality asymmetry, we formalize per-query configuration control
+as an optimization problem. While an oracle router could achieve a 75\% energy savings
+ceiling, a systematic evaluation of five routing strategies (including multiclass
+classification and utility scoring) reveals a structural limitation. All pre-execution
+routing models based on query-only features converge to a configuration accuracy of
+39.5\%, failing to meaningfully outperform a static ``cheapest-acceptable'' baseline.
+This suggests a circular dependency in RAG optimization: the information required
+to predict module benefit often emerges only after retrieval and intermediate
+execution; the very computation the router seeks to skip. These findings shift the
+focus for RAG efficiency from complex predictive modeling to policy-driven defaults
+and lightweight post-retrieval probing.
+
+\vspace{1cm}
+\textbf{Keywords:} retrieval-augmented generation, energy efficiency, query routing,
+LLM inference, conditional computation, local deployment, RAG optimization.
+
+% ============================================================================
+% A C K N O W L E D G M E N T S
+% ============================================================================
+
+\cleardoublepage
+\begin{center}\textbf{\Large Acknowledgments}\end{center}
+\bigskip
+
+% TODO: Write acknowledgments
+This is the only page throughout this thesis where I am not required to be a neutral observer, 
+so I will take the opportunity to be sincere, if brief.
+
+First, I must express my deepest gratitude to my advisor at ZHAW, Dr. Stefan Czerner. 
+Thank you for your unwavering support and for the constant interest you showed in this research. 
+I am especially grateful for the flexibility to pursue a path that didn't strictly suit our local 
+lab development, even when that meant supporting my plan to ``run away'' to the other side of 
+the world. Your positive attitude made the challenges feel manageable and the advice you shared 
+is something I will try to carry with me for as long as possible.
+
+I also want to thank the ZHAW School of Engineering for the institutional support and for granting 
+me the unique opportunity to conduct this research abroad.
+
+My time in Taiwan would not have been possible without the vision of Distinguished Prof. Shuo-Yan Chou. 
+Thank you for welcoming me into the Center for IoT Innovation (CITI) and for your generosity in fostering 
+such a vibrant, diverse and skillful research environment. Your ability to identify what truly makes research 
+impactful has been a lesson in itself.
+
+To the "lab rats" at CITI, especially Harry, William and Aesop for constantly helping out and the 
+S-TIER LLM Team (Avi, Ishaq, Zhafran and Sir Fadhil): thank you for the long days and the even 
+longer nights. You were my teachers, my IT support and my back. Thank you for the laughter, the 
+hard-to-describe humor and the (already forgotten) Mandarin and Indonesian swear words. Knowing 
+I could show up every day to your smiles made all the difference.
+
+Obviously, to my friends and my family, who are the kindest and prettiest souls I know: you made me who I am. 
+Thank you for believing in me, often more than I believe in myself.
+
+Aos meus pais e à minha irmã, que me apoiaram sempre. Embora eu não diga o suficiente, saibam que todo o 
+meu esforço é também por vocês. Provavelmente vocês não lerão esta tese, mas se por acaso virem estas palavras, 
+quero que saibam que amo-vos muito.
+
+% ============================================================================
+% T A B L E   O F   C O N T E N T S
+% ============================================================================
+
+\cleardoublepage
+\phantomsection
+\setcounter{tocdepth}{2}
+\renewcommand\contentsname{Table of Contents}
+\tableofcontents
+
+% ============================================================================
+% L I S T   O F   A B B R E V I A T I O N S
+% ============================================================================
+
+\cleardoublepage
+\section*{List of Abbreviations}
+
+\noindent
+\begin{tabular}{@{} l @{\hspace{2em}} l @{}}
+API     & Application Programming Interface \\
+AUC     & Area Under the Curve \\
+BGE     & BAAI General Embedding \\
+BM25    & Best Matching 25 \\
+CITI    & Center for IoT Innovation \\
+CPU     & Central Processing Unit \\
+EM      & Exact Match \\
+GPU     & Graphics Processing Unit \\
+HyDE    & Hypothetical Document Embeddings \\
+ICC     & Intraclass Correlation Coefficient \\
+IoT     & Internet of Things \\
+J/tok   & Joules per Token \\
+KILT    & Knowledge-Intensive Language Tasks \\
+KMS     & Knowledge Management System \\
+LLM     & Large Language Model \\
+LoRA    & Low-Rank Adaptation \\
+LR      & Logistic Regression \\
+MLP     & Multilayer Perceptron \\
+NLP     & Natural Language Processing \\
+NVML    & NVIDIA Management Library \\
+RAGAS   & RAG Assessment \\
+RAG     & Retrieval-Augmented Generation \\
+RAPL    & Running Average Power Limit \\
+RF      & Random Forest \\
+RRF     & Reciprocal Rank Fusion \\
+TTFT    & Time to First Token \\
+vLLM    & Virtual Large Language Model inference engine \\
+XGBoost & Extreme Gradient Boosting \\
+\end{tabular}
+
+% ============================================================================
+% L I S T   O F   F I G U R E S
+% ============================================================================
+
+\cleardoublepage
+\listoffigures
+
+% ============================================================================
+% L I S T   O F   T A B L E S
+% ============================================================================
+
+\cleardoublepage
+\listoftables
+
+% ============================================================================
+% Switch to Arabic numbering for main content
+% ============================================================================
+
+\cleardoublepage
+\pagenumbering{arabic}

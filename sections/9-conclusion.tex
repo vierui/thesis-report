@@ -1,0 +1,65 @@
+\newpage
+\section{Conclusion}
+\label{sec:conclusion}
+
+
+This thesis investigated energy-aware configuration control for locally
+deployed RAG systems, asking whether per-query module activation can
+reduce energy consumption without degrading answer quality.  We
+hypothesised that a circular dependency limits pre-execution routing:
+the information needed to select modules is produced by executing those
+modules.
+
+We designed a measurement framework that attributes energy, latency and
+quality to individual pipeline modules across infrastructure nodes.
+Applying it to the CITI KMS system with 1{'}200~HotpotQA queries across
+eight configurations (9{'}600 sessions), we established three findings.
+
+First, always-on module activation is measurably inefficient.  The full
+pipeline consumes 5.6$\times$ more energy than the minimal pipeline, while
+quality improves by less than 0.06~points on either metric.  The cost is
+unconditional; the benefit is conditional and query-dependent.
+
+Second, an oracle router saves 75\% energy versus always-C7, but this
+is primarily an engineering decision: disabling HyDE, which degrades
+quality at 5.3$\times$ the energy cost.  In the non-HyDE space
+(\{C0, C2, C3, C6\}), the oracle ceiling drops to 19\% versus
+always-C6.  The 75\% quantifies removing a harmful module; the 19\%
+quantifies the algorithmic routing limit.
+
+Third, eight routing experiments (five strategies, three explorations)
+all converge to a config accuracy of 0.38--0.40, with no statistically
+meaningful improvement over the cheapest-configuration baseline.  The
+ceiling is signal-limited: pre-execution features cannot capture the
+query--document interactions that determine which modules help.  The
+information needed to route is produced by the computation routing aims
+to skip.
+
+These results yield four contributions:
+
+\begin{enumerate}
+    \item \textbf{Contribution 1}: An energy measurement framework for distributed RAG
+          systems that attributes cost per module, per node and per
+          stage, reusable for any modular RAG pipeline.
+    \item \textbf{Contribution 2}: Empirical evidence that always-on module activation
+          is inefficient, with energy costs spanning 5.6$\times$ for
+          quality differences below 0.06~points on either metric.
+    \item \textbf{Contribution 3}: A systematic routing investigation that quantifies
+          the signal boundary for pre-execution module prediction.
+          Module-activation routing is harder than model routing because
+          quality gaps between configurations (2--4~pp) are an order of
+          magnitude smaller than between models (10--30~pp).
+    \item \textbf{Contribution 4}: Characterisation of the information gap between
+          oracle routing (100\% config accuracy) and achievable
+          pre-execution routing (39.5\%), defining a concrete research
+          target: cheaper access to post-retrieval signals.
+\end{enumerate}
+
+The 60.5~percentage-point gap between oracle and achieved performance
+is the thesis's most consequential result: a structural property of
+module-activation routing with pre-execution features, not a limitation
+to overcome within the current paradigm.  Closing this gap requires
+post-retrieval information at a cost lower than the computation it
+replaces.  Meanwhile, a well-tuned energy penalty~$\lambda$ captures
+most achievable benefit without any learned model, reducing the problem
+to a policy decision rather than a machine learning task.

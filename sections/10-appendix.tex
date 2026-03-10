@@ -1,0 +1,224 @@
+% !TEX root = ../main.tex
+\newpage
+\appendix
+
+
+% ============================================================================
+% A P P E N D I X   A :   R O U T I N G   R E S U L T S
+% ============================================================================
+
+\section{Consolidated Routing Results}
+\label{app:routing-results}
+
+Table~\ref{tab:app-routing} reports the best policy per experiment across
+all routing investigations.  Seven experiments (E1--E7) extend the five
+strategies described in Section~\ref{sec:strategies} by varying the feature
+set, quality metric definition and decision architecture.  All experiments
+use 5-fold stratified cross-validation on $N = 1{'}200$ queries with the
+non-HyDE configuration space \{C0, C2, C3, C6\}.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{l l l r r r r}
+\hline
+\textbf{Experiment} & \textbf{Best model} & $\bm{\lambda}$ & \textbf{Acc} & \textbf{F1\textsubscript{m}} & \textbf{Pass} & \textbf{E (J)} \\
+\hline
+Oracle          & ---         & ---  & 1.000 & 1.000 & 0.555 & 341 \\
+\hline
+E1: Feature sel.       & LogReg & 1.25 & 0.383 & 0.163 & 0.324 & 318 \\
+E2: Full features      & RF     & 1.50 & 0.395 & 0.189 & 0.328 & 318 \\
+E3: Retrieval probe    & RF     & 1.50 & 0.384 & 0.176 & 0.319 & 318 \\
+E4: Rich features      & RF     & 1.00 & 0.380 & 0.198 & 0.327 & 317 \\
+E5: Neural (energy)    & NN     & 1.50 & 0.377 & 0.150 & 0.316 & 319 \\
+E6: Neural (rich)      & NN     & 1.50 & 0.383 & 0.165 & 0.318 & 317 \\
+E7: Cascade            & RF+RF  & 1.50 & 0.397 & 0.192 & 0.331 & 318 \\
+\hline
+Static C0       & ---         & ---  & 0.382 & 0.138 & 0.318 & 318 \\
+Static C3       & ---         & ---  & 0.318 & 0.121 & 0.323 & 324 \\
+Random          & ---         & ---  & 0.256 & 0.245 & 0.335 & 372 \\
+\hline
+\end{tabular}
+\caption{Best policy per routing experiment.
+         Acc = config accuracy, F1\textsubscript{m} = F1 macro,
+         Pass = pass rate, E = mean energy per request.}
+\label{tab:app-routing}
+\end{table}
+
+Table~\ref{tab:app-routing-models} breaks down each experiment by
+classifier to show that the accuracy plateau holds regardless of model
+choice.  The spread within each experiment (1--2~pp) is comparable to
+cross-validation noise.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{l l l r r r}
+\hline
+\textbf{Experiment} & \textbf{Model} & $\bm{\lambda}$ & \textbf{Acc} & \textbf{F1\textsubscript{m}} & \textbf{Pass} \\
+\hline
+\multirow{3}{*}{E1: Feature sel.}
+  & LogReg & 1.25 & 0.383 & 0.163 & 0.324 \\
+  & RF     & 1.50 & 0.382 & 0.187 & 0.327 \\
+  & XGB    & 1.50 & 0.360 & 0.203 & 0.326 \\
+\hline
+\multirow{3}{*}{E2: Full features}
+  & LogReg & 1.25 & 0.378 & 0.189 & 0.322 \\
+  & RF     & 1.50 & 0.395 & 0.189 & 0.328 \\
+  & XGB    & 1.50 & 0.362 & 0.206 & 0.332 \\
+\hline
+\multirow{3}{*}{E3: Retrieval probe}
+  & LogReg & 1.25 & 0.370 & 0.185 & 0.321 \\
+  & RF     & 1.50 & 0.384 & 0.176 & 0.319 \\
+  & XGB    & 0.50 & 0.369 & 0.228 & 0.324 \\
+\hline
+\multirow{3}{*}{E7: Cascade}
+  & LR+LR  & 1.50 & 0.376 & 0.173 & 0.320 \\
+  & RF+RF  & 1.50 & 0.397 & 0.192 & 0.331 \\
+  & XGB+XGB & 1.50 & 0.356 & 0.202 & 0.325 \\
+\hline
+\end{tabular}
+\caption{Per-model results within each experiment (best $\lambda$ per model).}
+\label{tab:app-routing-models}
+\end{table}
+
+
+% ============================================================================
+% A P P E N D I X   B :   A D D I T I O N A L   F I G U R E S
+% ============================================================================
+
+\section{Additional Routing Figures}
+\label{app:routing-figures}
+
+Figures~\ref{fig:app-pareto}--\ref{fig:app-cm-s6} supplement
+the routing analysis of Chapter~\ref{sec:strategies}.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{fig_pareto_frontier.pdf}
+\caption{Pareto frontier: config accuracy versus mean energy}
+\label{fig:app-pareto}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{fig_config_acc_energy_bars.pdf}
+\caption{Config accuracy and energy cost per strategy}
+\label{fig:app-acc-energy-bars}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.65\textwidth]{fig_s3_cluster_lookup.pdf}
+\caption{Cluster-based configuration lookup (S3)}
+\label{fig:app-s3-cluster}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.55\textwidth]{fig_cm_s6_utility.pdf}
+\caption{Confusion matrix for utility scoring variant S6}
+\label{fig:app-cm-s6}
+\end{figure}
+
+
+% ============================================================================
+% A P P E N D I X   C :   F E A T U R E   S T A T I S T I C S
+% ============================================================================
+
+\section{Feature Association Statistics}
+\label{app:feature-stats}
+
+Tables~\ref{tab:app-chi2} and~\ref{tab:app-kw} report the full
+statistical test results for feature--label association, supporting
+the analysis in Section~\ref{subsec:features-signal}.
+
+\paragraph{Boolean features.}
+Table~\ref{tab:app-chi2} reports chi-squared tests for all seven boolean
+features against the oracle label.
+Only \texttt{q\_has\_logical\_operator}
+reaches conventional significance ($p < 0.001$), consistent with the
+weak-signal finding in the main text.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{l r r r}
+\hline
+\textbf{Feature} & $\bm{\chi^2}$ & \textbf{$p$-value} & \textbf{Cram\'er's $V$} \\
+\hline
+\texttt{q\_has\_logical\_operator} & 27.52 & $<$0.001 & 0.152 \\
+\texttt{q\_has\_date\_entity}      & 15.55 & 0.030    & 0.114 \\
+\texttt{q\_is\_definition}         & 10.93 & 0.142    & 0.095 \\
+\texttt{q\_multi\_entity}          &  8.96 & 0.255    & 0.086 \\
+\texttt{q\_has\_number\_entity}    &  4.88 & 0.674    & 0.064 \\
+\texttt{reasoning\_marker}         &  4.25 & 0.751    & 0.060 \\
+\texttt{has\_code}                 &  3.27 & 0.859    & 0.052 \\
+\hline
+\end{tabular}
+\caption{Chi-squared tests for boolean features versus oracle label ($df = 7$).}
+\label{tab:app-chi2}
+\end{table}
+
+\paragraph{Numeric features.}
+Table~\ref{tab:app-kw} reports Kruskal-Wallis tests for all twelve
+numeric features.  Effect sizes ($\eta^2$) remain below 0.02 throughout,
+confirming that no single numeric feature explains meaningful label variance.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{l r r r}
+\hline
+\textbf{Feature} & \textbf{$H$} & \textbf{$p$-value} & $\bm{\eta^2}$ \\
+\hline
+\texttt{q\_len\_tokens}             & 22.48 & 0.002   & 0.013 \\
+\texttt{q\_len\_chars}              & 18.78 & 0.009   & 0.010 \\
+\texttt{q\_ner\_type\_diversity}    & 17.44 & 0.015   & 0.009 \\
+\texttt{q\_ner\_count}              & 16.38 & 0.022   & 0.008 \\
+\texttt{q\_emb\_sim\_gap}           & 10.40 & 0.167   & 0.003 \\
+\texttt{q\_np\_count}               &  8.38 & 0.300   & 0.001 \\
+\texttt{num\_sentences}             &  7.40 & 0.389   & $<$0.001 \\
+\texttt{q\_emb\_norm}               &  7.00 & 0.429   & $<$0.001 \\
+\texttt{q\_content\_word\_ratio}    &  6.42 & 0.492   & $<$0.001 \\
+\texttt{q\_emb\_top1\_sim}          &  5.59 & 0.588   & $<$0.001 \\
+\texttt{q\_emb\_top2\_sim}          &  4.58 & 0.710   & $<$0.001 \\
+\texttt{constraint\_count}          &  3.31 & 0.855   & $<$0.001 \\
+\hline
+\end{tabular}
+\caption{Kruskal-Wallis tests for numeric features versus oracle label ($k = 8$ groups).}
+\label{tab:app-kw}
+\end{table}
+
+
+% ============================================================================
+% A P P E N D I X   D :   E N E R G Y   D E T A I L S
+% ============================================================================
+
+\section{Energy Measurement Details}
+\label{app:energy-details}
+
+Figures~\ref{fig:app-cpu-gpu}--\ref{fig:app-power} supplement the
+baseline analysis of Chapter~\ref{sec:baseline_analysis} with
+node-level and stage-level decompositions.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{cpu_gpu_breakdown.png}
+\caption{CPU versus GPU energy share per node}
+\label{fig:app-cpu-gpu}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{stage_energy_breakdown.png}
+\caption{Stage-level energy waterfall}
+\label{fig:app-stage-breakdown}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{power_draw_by_config.png}
+\caption{Mean power draw by configuration}
+\label{fig:app-power}
+\end{figure}

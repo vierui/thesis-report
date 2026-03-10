@@ -1,0 +1,556 @@
+\newpage
+\section{Measurement Framework}
+\label{sec:method_protocol}
+
+
+\subsection{Objectives and Scope}
+\label{subsec:measurement-objective}
+
+
+% --- Block A: Measurement Objective ---
+
+The conditional controller proposed in this thesis assumes that optional RAG modules
+consume additional energy per request. The CITI KMS system described in
+previously has no existing energy benchmarks nor toggled modules. Before designing a
+controller, we must first quantify the energy cost of module activation.
+
+To produce this evidence, the measurement framework records estimated energy consumption on each
+of the three infrastructure nodes that compose the RAG pipeline:
+
+\begin{figure}[h!]
+    \centering
+        \centering
+        \includegraphics[width=0.8\textwidth]{energy-measurement.png}
+        \caption{Node-level energy measurement architecture}
+        \label{fig:energy-measurement}
+\end{figure}
+
+\begin{itemize}
+    \item \textbf{embedding node}, which encodes queries and when reranking is
+          active, runs a cross-encoder model;
+    \item \textbf{vector-database node} (Milvus), which executes dense or hybrid
+          similarity search;
+    \item \textbf{LLM node}, which generates the final answer and when
+          HyDE is active, produces a hypothetical document.
+\end{itemize}
+
+On each node, CPU and GPU energy are read from hardware counters at the start
+and end of every request. The reported quantity is total energy per request in
+joules, summed across all three nodes.
+
+% writing_note : we need to explain why only CPU and GPU --> if not mentionned in chapter 2
+% SOTA that GPU and CPU account for most energy usage
+
+The primary comparison is between C0 (minimal pipeline: all modules off, dense search)
+and C7 (the current CITI KMS configuration: all modules on, hybrid search). To enable
+finer-grained attribution and provide training data for the controller, we extended the
+comparison to all eight possible configurations (C0--C7) defined in
+Section~\ref{subsec:baseline-config}. These form a complete $2^3$ factorial design over
+three binary module axes: HyDE, reranking, and search type.
+
+\begin{figure}[h!]
+    \centering
+        \centering
+        \includegraphics[width=0.8\textwidth]{citi_config_tree_wide.png}
+        \caption{$2^3$ factorial configuration space}
+        \label{fig:config-tree}
+\end{figure}
+
+Energy alone does not suffice to evaluate module activation. A configuration that saves
+energy but doubles response time or degrades answer correctness is not useful. Therefore,
+each session also records latency and quality metrics.
+
+\subsection{Unit of Analysis}
+\label{subsec:unit-of-analysis}
+
+The unit of analysis is a \emph{session}: one query executed under one fixed configuration
+until an answer is produced. Every measurement (energy, time to first token, total
+time, token counts, quality scores, etc.) is recorded under a unique
+\texttt{session\_id}. A session is identified by the tuple \texttt{(query\_id, config\_id)}.
+
+Sessions are executed sequentially with no concurrent load, independently of
+configuration order. Each measurement therefore reflects the complete cost of
+answering one query under one configuration.
+
+% writing_note : keep this commented - do not delete.
+% In total, the experimental dataset comprises 750~queries executed under all
+% 8~configurations, yielding 6{'}000~sessions.
+
+In total, each session records approximately 47~fields spanning energy, timing, token
+counts, retrieval statistics, and stage-level attribution. Section~\ref{subsec:metrics} 
+lists these fields and their definitions.
+
+% % --- Block C: System Boundary ---
+
+Each node runs a lightweight metrics module that reads hardware energy counters
+at the start and end of every session. The orchestrator coordinates session
+boundaries across all three nodes via a shared \texttt{session\_id}. Attribution
+is at the device level (CPU package, GPU device); the framework does not
+decompose energy to individual processes or kernels.
+% Section~\ref{subsubsec:energy-metrics} defines the counter sources and
+% computation method.
+
+Excluded from the measurement boundary are power-at-the-wall measurements, network
+fabric energy, storage I/O energy, and orchestrator computation. The orchestrator
+performs no heavy computation; its role is control flow and data assembly.
+
+
+% % --- Block D: Supporting Metrics ---
+Beyond energy, each session records latency (time to first token, total
+response time), token counts (query, augmentation, context, answer), retrieval
+traces (pre-rerank, post-rerank, final context), and quality scores
+(deterministic, provenance-based, and LLM-assisted). These supporting
+measurements ensure that no energy claim is made without the corresponding
+operational and quality context.
+
+
+\subsection{Metrics Definition}
+\label{subsec:metrics}
+% This chapter defines what is measured and how. Interpretation belongs to
+% Chapter~\ref{sec:baseline_analysis}. Section~\ref{subsec:metrics} specifies each metric's
+% unit, computation method, and role in the analysis.
+
+\subsubsection{Energy Metrics}
+\label{subsubsec:energy-metrics}
+% --- Block A: Primary energy quantities ---
+Request energy represents the total device-level cost of answering one query
+under one configuration. It is computed as the sum of the three infrastructure
+nodes:
+$$E_{\text{request}} = E_{\text{emb. model}} + E_{\text{database}} + E_{\text{llm}}$$
+
+Each node contributes CPU and GPU energy:
+$$E_{\text{node}} = E_{\text{cpu}} + E_{\text{gpu}}$$
+
+where:
+\begin{itemize}
+    \item \textbf{$E_{cpu}$} is read from Intel RAPL counters, which report
+          cumulative energy in microjoules ($\mu$J), converted to joules (J).
+    \item \textbf{$E_{gpu}$} is read from the NVIDIA NVML interface, which
+          reports cumulative energy in millijoules (mJ), converted to joules (J).
+\end{itemize}
+
+Both counter types are monotonic. Session energy is computed as a counter delta:
+$\Delta E = E_{\text{end}} - E_{\text{start}}$ within the session window.
+
+Energy is reported in joules rather than watts. Watts measure instantaneous
+power draw; joules capture total energy consumed over the session window, which
+matches the per-request comparison objective.
+
+% --- Block B: Normalization (J/token) ---
+In LLM systems, computation cost scales approximately with the number of tokens
+processed. Because configurations change token counts per request, HyDE adds
+augmentation tokens, reranking alters context length; normalizing energy by
+total tokens controls for workload-size differences:
+
+% writing_notes :
+% allows comparison across: batch sizes, contexts, generation lengths, datasets
+% Energy per token approximates:
+% FLOPs per token × Energy per FLOP
+
+$$E_{\text{token}} = \frac{E_{\text{request}}}{N_{\text{total\_tokens}}} \quad [\text{J/token}]$$
+
+Joules per token serves as a comparison aid when output lengths differ across
+configurations. It is not a perfect universal efficiency metric. It still ignores retrieval
+cost amortization, query-level fixed energy overhead and short-answer bias but takes 
+
+
+\subsubsection{Latency Metrics}
+\label{subsubsec:performance-metrics}
+
+% --- Block D: Latency ---
+Two main latency measures capture the operational cost of each session:
+
+\begin{figure}[h!]
+    \centering
+        \centering
+        \includegraphics[width=0.8\textwidth]{latency.png}
+        \caption{Latency measurement points}
+        \label{fig:latency-measurement}
+\end{figure}
+
+\begin{itemize}
+    \item \textbf{Time to first token (TTFT)} elapsed time in milliseconds
+          from query submission to the first generated token. TTFT reflects
+          user-perceived responsiveness and is sensitive to pre-generation stages
+          such as HyDE and reranking.
+    \item \textbf{Total response time} elapsed time in milliseconds from
+          query submission to answer completion. This measures end-to-end duration.
+\end{itemize}
+
+Their difference can be defined as generation time. Per-stage timing intervals (embedding, 
+retrieval, reranking, HyDE, generation)
+are also recorded. They connect module activation to latency contributions and
+support energy attribution by stage. 
+
+% --- Block E: Token accounting ---
+
+Each session records five token counts that describe workload size:
+\begin{itemize}
+    \item \textbf{query\_tokens}: tokens in the original user query
+    \item \textbf{augm\_tokens}: tokens produced by HyDE (zero when HyDE
+          disabled)
+    \item \textbf{context\_tokens}: tokens in the retrieved context assembled
+          for the LLM
+    \item \textbf{answer\_tokens}: tokens in the generated answer
+    \item \textbf{total\_tokens}: sum of the above four fields
+\end{itemize}
+
+Token counts serve two roles. First, they characterize how each configuration
+changes workload composition (HyDE adds augmentation tokens; 
+context length altered by reranking). 
+Second, total tokens provides the denominator for energy
+normalization (J/token) as defined earlier.
+
+
+\subsubsection{Quality Proxies}
+\label{subsubsec:quality-proxies}
+
+The studied configurations activate modules that primarily affect retrieval
+and context selection. Quality evaluation must therefore cover answer
+correctness, retrieval correctness and grounding faithfulness.
+No human evaluation is performed; all scores are computed by deterministic
+text comparisons or LLM-assisted metrics and treated as proxies, not as
+ground truth.
+
+% --- HotpotQA benchmark metrics ---
+
+\paragraph{HotpotQA benchmark metrics}~\cite{hotpotqa2018} provide
+deterministic, reproducible scoring across the three evaluation axes:
+
+\begin{itemize}
+    \item \textbf{Answer~F1} token-level overlap between the generated
+          answer and the reference answer after normalization (lowercasing,
+          article and punctuation removal). Exact Match~(EM) is the
+          corresponding binary variant.
+    \item \textbf{Supporting Facts~F1} paragraph-level retrieval
+          correctness: measures whether the pipeline retrieved the gold
+          supporting-fact paragraphs annotated in the dataset.
+    \item \textbf{Joint~F1} product of Answer~F1 and Supporting Facts~F1;
+          rewards correct answers only when supported by correct retrieval.
+\end{itemize}
+
+Joint~F1 separates two failure modes: ``answer looks right but retrieval
+failed'' versus ``answer is supported by the correct documents.'' This
+distinction matters because the studied modules (HyDE, reranking, hybrid
+search) primarily affect retrieval behavior.
+
+% --- LLM-assisted quality (RAGAS) ---
+
+\paragraph{LLM-assisted metrics} add semantic evaluation that string-based
+metrics miss. The LLM-as-judge paradigm uses a language model to score
+generated answers against references or contexts;
+vRAG-Eval~\cite{vrageval2024} reports 82.6\% agreement between GPT-4
+judgments and human annotations on RAG evaluation tasks. The thesis uses the
+RAGAS framework~\cite{ragas2023} with two primary metrics, scored 0~to~1:
+
+\begin{itemize}
+    \item \textbf{Faithfulness} fraction of claims in the generated
+          answer that are supported by the retrieved contexts.
+    \item \textbf{Factual correctness} semantic agreement between
+          the generated answer and the reference answer.
+\end{itemize}
+
+Faithfulness detects hallucination (unsupported claims); factual correctness
+detects wrong answers (semantic mismatch with the reference). Together with
+Answer~F1, they form the quality basis for the acceptability thresholds
+defined in Chapter~\ref{sec:controller}. A dedicated evaluator model
+(Qwen2.5-14B-Instruct), distinct from the pipeline LLM, scores
+each answer; results are treated as assisted evaluation, not as
+oracle truth.
+% and scores should be interpreted comparatively across configurations (DO NOT DLT - keep commented)
+% rather than as absolute quality measures. (DO NOT DLT - keep commented)
+
+
+\subsection{Benchmark Dataset}
+\label{subsec:dataset}
+The measurement framework requires three aligned artifacts: 
+a reference answer, gold supporting-fact annotations, and a retrieval corpus. 
+This thesis utilizes HotpotQA~\cite{hotpotqa2018}, a multi-hop 
+benchmark requiring information synthesis across multiple documents.
+
+HotpotQA was selected for three primary reasons. First, its multi-hop 
+structure mimics high-level knowledge management behavior, where users 
+often seek to synthesize information across disparate internal sources. 
+Second, the dataset is well-documented in existing literature with clear, 
+comparable benchmarks, providing a rigorous baseline for our system's 
+quality evaluation. Finally, multi-hop queries exercise the full RAG pipeline: 
+retrieval must surface multiple documents and generation must synthesize across 
+them. This complexity is a prerequisite for routing research, as it should create 
+variation in module utility—some queries require advanced modules like 
+reranking to succeed, while others do not.
+
+While other knowledge-intensive datasets were considered, HotpotQA provided 
+a better balance of reasoning depth and benchmarking clarity.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.85\textwidth]{hotpot.jpg}
+    \caption{HotpotQA question and answer type distributions~\cite{hotpotqa2018}}
+    \label{fig:hotpot}
+\end{figure}
+
+The full HotpotQA distractor split contains approximately 7,400 queries. 
+However, executing each query under all eight configurations yields 59,200 
+total sessions. To manage the computational demand and time constraints 
+associated with running these sessions—specifically the high energy cost of 
+LLM-assisted evaluation, we utilized a representative sample of 1,200 queries; 
+Split equally between 600 bridge queries (requiring information 
+from linked documents) and 600 comparison queries (comparing two entities). 
+Each record contains the question text, a reference answer and gold 
+supporting-fact paragraphs.
+
+The document corpus consists of the specific Wikipedia pages referenced as 
+gold supporting facts for these queries, which were chunked and pre-indexed in 
+Milvus. This closed-corpus design ensures that every gold document is present 
+in the retrieval index, allowing the Supporting Facts F1 metric to measure 
+retrieval effectiveness directly rather than corpus coverage. The implications 
+of this reduced retrieval difficulty on domain generalization are further addressed.
+
+\subsection{Experimental Protocol}
+\label{subsec:protocol}
+
+% --- Block A: Protocol objective ---
+
+Energy and latency measurements are sensitive to transient system state:
+background load, thermal conditions, and caching effects can introduce
+variation unrelated to configuration differences. The experimental protocol
+controls for these factors by enforcing a fixed workload, a fixed
+configuration per session, and deterministic scheduling. The same protocol is
+reused when evaluating the controller in Chapter~\ref{sec:strategies}, so that
+energy deltas between baseline and controlled execution remain comparable.
+
+% --- Block B: Configuration space ---
+
+The configuration space is the $2^3$ factorial design introduced in
+Section~\ref{subsec:baseline-config}: three binary module axes (HyDE,
+reranking, search type) yield eight configurations (C0--C7). Each
+configuration is fixed for the duration of a session; there is no mid-request
+switching. Table~\ref{tab:configs} lists all eight configurations with their
+module settings.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{c c c l l}
+\hline
+\textbf{Config} & \textbf{HyDE} & \textbf{Reranking} & \textbf{Search type} & \textbf{Description} \\
+\hline
+C0 & off & off & dense  & minimal pipeline \\
+C1 & on  & off & dense  & + HyDE  \\
+C2 & off & on  & dense  & + reranking \\
+C3 & off & off & hybrid & + hybrid \\
+C4 & on  & on  & dense  & + HyDE + reranking \\
+C5 & on  & off & hybrid & + HyDE + hybrid \\
+C6 & off & on  & hybrid & + reranking + hybrid \\
+C7 & on  & on  & hybrid & all modules \\
+\hline
+\end{tabular}
+\caption{Configuration space: $2^3$ factorial over three binary module axes.}
+\label{tab:configs}
+\end{table}
+
+% --- Block C: Experimental unit and dataset size ---
+
+The full experiment runs all 1{'}200~queries through all
+8~configurations, producing 9{'}600~sessions. Each session logs raw energy
+traces, timing metadata, token counts, retrieval traces and the generated
+answer text. Runs order are shuffled to reduce systematic drift effects.
+Post-hoc evaluation scripts then compute deterministic quality
+metrics (Answer~F1, Supporting Facts~F1, Joint~F1) and LLM-assisted metrics
+(RAGAS faithfulness, factual correctness) from the stored artifacts.
+
+This dataset serves three purposes: benchmarking the CITI KMS system for
+the first time against literature baselines, the baseline trade-off analysis
+in Chapter~\ref{sec:baseline_analysis} and generate the training data for the
+conditional controller in Chapters~\ref{sec:controller}--\ref{sec:strategies}.
+
+% --- Block D: Execution scheduling ---
+
+A checkpoint file records every completed session. If a run is interrupted, it
+resumes from the last checkpoint without re-executing completed sessions. Failed
+sessions are logged and excluded; they do not silently corrupt the dataset.
+
+% --- Block E: Session procedure ---
+
+Each session follows a fixed procedure:
+
+\begin{enumerate}
+    \item The orchestrator creates a unique \texttt{session\_id} and records the
+          query identifier, configuration identifier and run number.
+    \item The orchestrator broadcasts a \texttt{start} signal to all three
+          infrastructure nodes. Each node begins reading energy counters and
+          opens a session buffer.
+    \item The pipeline executes the request under the fixed configuration:
+          embedding, retrieval (dense or hybrid), optional HyDE, optional
+          reranking, context assembly and generation.
+    \item Stage marks (start and end timestamps) are emitted for each major
+          pipeline stage. Marks are best-effort; a missed mark does not abort
+          the session.
+    \item After the answer is produced, the orchestrator broadcasts a
+          \texttt{stop} signal. Each node closes its buffer and returns the
+          collected traces.
+    \item All artifacts: energy traces, session metadata, retrieval trace,
+          answer text and stage intervals are persisted under the \texttt{session\_id}.
+\end{enumerate}
+
+Session energy is computed as a counter delta over the start-to-stop window.
+% The framework does not subtract an idle baseline; because all configurations
+% run under the same protocol, energy deltas between configurations remain
+% meaningful without idle subtraction.
+
+% --- Block F: Post-hoc evaluation ---
+
+Evaluation is separated from execution. Deterministic metrics (Answer~F1,
+Supporting Facts~F1, Joint~F1) are computed offline from the stored answer
+texts and retrieval traces. RAGAS metrics (faithfulness, factual correctness)
+are computed by a separate evaluation script that retrieves context documents
+from Milvus and invokes a dedicated evaluator model (Qwen2.5-14B-Instruct),
+distinct from the pipeline LLM to avoid self-evaluation bias and a perfomance ceiling. 
+
+This separation keeps the online request path simple and allows the analysis to
+be rerun. For example, with updated frameworks, metrics or corrected provenance
+mappings, without re-executing all the sessions.
+
+% Evaluation is separated from execution. Deterministic metrics (Answer~F1,
+% Supporting Facts~F1, Joint~F1) are computed offline from the stored answer
+% texts and retrieval traces. RAGAS metrics (faithfulness, factual correctness)
+% are computed by a separate evaluation script that retrieves context documents
+% from Milvus.
+
+% This separation keeps the online request path simple and allows the analysis to
+% be rerun. For example, with updated frameworks, metrics or corrected provenance
+% mappings, without re-executing all the sessions.
+
+% Also it invokes a dedicated evaluator model (Qwen2.5-14B-Instruct),
+% distinct from the pipeline LLM to avoid self-evaluation bias.
+% Recent benchmarks show that evaluator reliability scales with model size and
+% that instruction-tuned models produce more consistent judgments on open-ended
+% quality metrics~\cite{llmasjudge2024}; we therefore select a 14B instruct model
+% as the largest evaluator our infrastructure can serve alongside the pipeline.
+
+% --- Block G: Validity criteria ---
+
+Several validity checks are applied before any session enters the analysis
+dataset. Energy counters must be monotonic within a session; a negative delta
+invalidates that node's energy for the session. Each session must contain
+start and stop boundaries for every node included in the energy total. Sessions
+that fail any check are flagged and excluded from the analysis. No silent
+corrections are applied; exclusion is preferred over ad-hoc imputation.
+
+% --- Block H: Protocol invariance ---
+
+All experiments in this thesis: baseline analysis controller training
+and controller evaluation use the same query set, the same corpus and
+index, the same eight configurations, the same measurement boundary and the
+same logging artifacts.
+
+
+\subsection{Features}
+\label{subsec:router-features}
+
+% --- Block A: Feature record policy ---
+
+The conditional controller proposed predicts a
+configuration \emph{before} the pipeline executes. This constraint divides the
+logged data into two categories:
+
+\begin{itemize}
+    \item \textbf{Pre-execution features} are derived from the query text alone.
+          They include :
+          \begin{itemize}
+            \item \textbf{surface statistics} character and token counts, sentence count)
+            \item \textbf{question-type indicators} question word, definition or list intent, logical operators
+            \item \textbf{complexity signals} named-entity count and diversity, noun-phrase count, content-word ratio
+            \item \textbf{semantic features} embedding norm, cosine similarities to query-type centroids
+          \end{itemize}
+          These 23~features are computable before any pipeline stage runs.
+    \item \textbf{Post-execution features} are produced by the pipeline and these are available only after the session completes.
+    \begin{itemize}
+            \item \textbf{retrieval scores } top-1 similarity, score gaps
+            \item \textbf{context statistics} context length, number of documents, truncation ratio
+            \item \textbf{token counts} 
+            \item \textbf{quality metrics} 
+      \end{itemize}
+
+\end{itemize}
+
+Pre-execution features serve as router inputs. Post-execution features are
+logged for analysis but cannot serve as controller inputs without running
+(and paying the cost of) at least part of the pipeline.
+Chapter~\ref{sec:controller} formalizes this distinction and defines the
+feature groups used for training.
+
+% --- Block B: Feature persistence ---
+
+Feature extraction is performed offline: a dedicated script computes all
+23~pre-execution features for the 1{'}200~queries and stores them alongside the
+query identifiers. The same session artifacts that feed the baseline analysis
+also feed the controller training pipeline. This avoids a second, inconsistent
+data-collection step and ensures that the router is trained on the exact system
+behavior measured in this chapter.
+
+
+
+
+
+
+
+
+% % ============================================================================
+% DO NOT DELETE  : 
+% Factoid queries
+% Straightforward, single-hop questions that can typically be answered from one document / one passage.
+
+% Multi-document queries
+% Questions that intentionally require retrieving information from multiple documents and combining them (e.g., compare, aggregate, reconcile).
+
+% Reasoning / implication queries
+% Queries where the answer requires inference beyond direct lookup, using retrieved facts to draw a conclusion, explain consequences, or propose a next step.
+
+% Ambiguous / underspecified queries
+% Real users ask: “How does this work again?” or “What’s the process?”
+% These are where HyDE/query expansion often matters.
+
+% Negative / no-answer queries
+% Questions that shouldn’t be answered from the corpus (not present, out of scope).
+% This is crucial if your controller also decides “don’t retrieve” or “retrieve but abstain”.
+
+% If you add just (2) underspecified and (3) no-answer, your dataset becomes much more “future-proof” for real traffic.
+
+% A sharper way to frame the dataset
+
+% Instead of “3 types of questions”, you can describe it as training coverage across two axes:
+
+% Retrieval breadth: single-doc → multi-doc
+
+% Answer processing: extractive → compositional → inferential
+
+% Your three buckets are basically corners of this grid—good! The improvement is making sure you populate the in-between regions so the classifier doesn’t overfit.
+
+% ---
+
+% We evaluate our retrieval-augmented generation system using the KILT benchmark (Petroni et al., NAACL 2021), which provides a standardized Wikipedia corpus, curated query sets, and gold provenance annotations. This allows rigorous evaluation of both retrieval correctness and answer quality while enabling controlled system-level measurements.
+% -->  if we Use KILT as the academic reference Add your own domain corpus (lab documents)
+%     You compare: Δ system behavior under identical queries. This is key.
+%             “We evaluate our RAG system on KILT, a standardized benchmark for knowledge-intensive NLP tasks grounded in Wikipedia.”
+
+%             You are no longer benchmarking QA performance
+
+% You are benchmarking system behavior under retrieval uncertainty.
+
+% That’s a different but valid scientific claim.
+
+% Aspect	kilt_wikipedia	kilt_corpus
+% QA benchmark fidelity	High	Lower
+% Retrieval difficulty	Artificially easier	Realistic
+% Noise	Low	High
+% Router value	Moderate	High
+% Energy signal	Muted	Strong
+% Systems relevance	Medium	Very high
+
+% With kilt_corpus, your router actually matters more.
+
+% --> “While KILT provides a task-aligned Wikipedia subset, we intentionally use the full KILT corpus to reflect realistic retrieval conditions. Our objective is not to maximize QA benchmark scores, but to study energy–latency–quality trade-offs in retrieval-augmented systems under large-scale retrieval noise.”
+
+
+
+% use Kepler (Kubernetes-based Efficient Power Level Exporter) to collect energy consumption data 2601.02522v2.pdf

@@ -1,0 +1,237 @@
+
+\newpage
+\section{System Overview}
+\label{sec:baseline}
+
+% Design principle for Chapter 3 > Describe the RAG system **as implemented**, prior to any optimization or evaluation.
+% This chapter is strictly **descriptive**: no results, no comparison, no judgment.
+% Reader takeaway after Chapter 3 > "I understand what the system is, what components and modules it contains, and how a query is executed in the baseline (always-on) configuration."
+
+% ---------------------------------------------------------------------------
+\subsection{The CITI KMS Context}
+\label{subsec:kms-context}
+
+The RAG system under study was deployed as a knowledge management system (KMS)
+developed by the Center for IoT Innovation known as CITI, a leading research lab directed by Distinguished Professor 
+Shuo-Yan Chou at the National Taiwan University of Science and Technology. 
+While the system's primary purpose 
+is to preserve the lab's institutional knowledge across student generations, 
+it also serves as a first step toward what might be described as an organizational 
+memory, with potential future use in internal agent-based 
+workflows~\cite{openaidataagent2026}.
+
+This chapter describes the system as physically deployed, focusing 
+exclusively on its inference-time capabilities. Its special capabilities such as the podcast or teacher-student 
+mode are not discussed.
+
+% ---------------------------------------------------------------------------
+\subsection{System Architecture}
+\label{subsec:architecture}
+The pipeline is deployed across four services: three primary processing 
+nodes and one orchestrator.
+
+\begin{figure}[h!]
+    \centering
+        \centering
+        \includegraphics[width=0.85\textwidth]{nodes.png}
+        \caption{CITI KMS infrastructure nodes}
+        \label{fig:rag-vanilla}
+\end{figure}
+
+\begin{itemize}
+    \item \textbf{Orchestrator} This service is the entry point for all user queries. It coordinates calls to the 
+services, assembles intermediate outputs and returns the final answer. It performs no 
+heavy computation. Its role is control flow and data assembly.
+    \item \textbf{Embedding node} It contains the embedding model which encodes the text into dense vector representations. It processes user queries and 
+when query expansion is active, the new generated query into the same vector space used for 
+retrieval.
+    \item \textbf{Database node} This node stores indexed document representations and executes similarity searches against 
+incoming query vectors. It returns a ranked list of candidate passages to be used as context 
+for generation.
+    \item \textbf{LLM node} This node generates the final natural-language answer. It receives a prompt containing 
+the user query together with relevant document passages retrieved from the database.
+\end{itemize}
+
+
+
+The Table below summarizes the hardware of each node. The orchestrator runs 
+on a development machine without GPU.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{llllll}
+\textbf{Node} & \textbf{CPU} & \textbf{RAM} & \textbf{GPU}\\
+\hline
+LLM          & AMD Ryzen 9 9950X3D & 64\,GB & NVIDIA RTX 5090 (32\,GB) \\
+Embedding   &  Intel i7-13700KF    & 32\,GB & NVIDIA RTX 4080 (16\,GB) \\
+Database    &  Intel i7-12700      & 64\,GB & NVIDIA RTX 4080 (16\,GB) \\
+Orchestrator &  Apple M4 Pro         & 24\,GB & ---                      \\
+
+\end{tabular}
+\caption{Node hardware specifications.}
+\label{tab:deployment}
+\end{table}
+
+All nodes are connected via a local network. Energy measurements are collected on the 
+three main nodes as described in Chapter~\ref{sec:method_protocol}.
+
+% % Block C — Data flow at inference time
+At inference time, the orchestrator drives a sequential flow: a user query arrives, 
+the orchestrator requests a vector embedding, executes retrieval against the vector 
+database, assembles the retrieved passages into a generation context and forwards it 
+to the language model, which produces the response. Each stage has explicit inputs and 
+outputs; the pipeline is modular by construction.
+
+% \begin{figure}[h!]
+%     \centering
+%         \centering
+%         \includegraphics[width=0.85\textwidth]{simple-rag.png}
+%         \caption{Basic RAG pipeline with node attribution}
+%         \label{fig:rag-simple-color}
+% \end{figure}
+
+
+% Block D — Architectural assumptions relevant to later chapters
+For the purposes of this thesis, each request is treated as an independent unit of analysis: 
+one query produces one execution trace. All experiments assume sequential execution with no 
+concurrent requests.
+
+% ---------------------------------------------------------------------------
+
+\subsection{Optional Pipeline Modules}
+\label{subsec:modules}
+
+The CITI KMS extends the chore pipeline with three optional modules (introduced in Section~\ref{sec:architecture}):
+two additional stages and one modification to an existing stage. Each module operates as
+an independent toggle.
+
+\medskip
+\noindent\textit{Terminology note.}
+Throughout this thesis, \emph{module} refers to a toggleable pipeline component; 
+HyDE, reranking, hybrid search. \emph{Feature} refers to a predictive attribute
+extracted from the query text (e.g.\ token count, embedding norm) used as input
+to the router. This distinction avoids ambiguity in later chapters where both
+concepts co-occur.
+
+
+\paragraph{HyDE --- query expansion (before retrieval).}
+When enabled, the orchestrator forwards the user query to the LLM node, which generates
+a hypothetical answer. The embedding node then encodes this hypothetical document instead
+of the original query. The resulting vector serves as an alternative query representation
+for retrieval, bridging the vocabulary gap between short user queries and stored
+documents. HyDE is the most expensive optional module: it adds one full LLM inference
+call on the LLM node and one additional embedding call on the embedding node before
+retrieval begins.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=.9\textwidth]{hyde-comparison.png}
+    \caption{Query ingestion with and without HyDE}
+    \label{fig:hyde-comparison}
+\end{figure}
+
+\paragraph{Hybrid retrieval --- search strategy (during retrieval).}
+When enabled, the database node performs both dense (embedding-based) and sparse
+(keyword-based) retrieval and fuses their ranked results. Dense search captures semantic
+similarity; sparse search captures exact keyword matches. Combining both signals improves
+coverage when one strategy alone would miss relevant passages. This computation runs
+entirely on the database node. When disabled, only dense retrieval is used.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=.9\textwidth]{hybrid-dense.png}
+    \caption{Dense versus hybrid retrieval}
+    \label{fig:search-type}
+\end{figure}
+
+
+\paragraph{Reranking --- candidate refinement (after retrieval).}
+When enabled, the embedding node runs a cross-encoder model over the retrieved candidate
+documents. Unlike the embedding model, which encodes query and document independently, the
+cross-encoder processes each query--document pair jointly and produces a relevance score.
+The candidates are reordered by this score and only the top-$n$ passages are kept for
+generation. Reranking adds one additional model call on the embedding node.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.9\textwidth]{reranking-comparison.png}
+    \caption{Retrieved context with and without reranking}
+    \label{fig:reranking}
+\end{figure}
+
+\medskip
+
+Each module is an independent binary toggle. Together, the three toggles define
+a configuration vector: HyDE (on/off), retrieval mode (dense/hybrid) and reranking
+(on/off). This vector controls pipeline intensity per request. All three add computation and
+service calls without changing the system's goal: producing an answer grounded in
+retrieved context. During baseline experiments, the configuration is fixed for the
+entire run and applied uniformly to all queries. Dynamic per-query adaptation is
+introduced in Chapter~\ref{sec:controller}.
+
+
+% ---------------------------------------------------------------------------
+\subsection{Baseline Execution}
+\label{subsec:baseline-flow}
+
+In the baseline configuration, all optional modules are enabled. Every query follows the same 
+fixed pipeline execution path with no conditional logic:
+
+\begin{figure}[h!]
+    \centering
+        \centering
+        \includegraphics[width=1.0\textwidth]{rag-options.png}
+        \caption{RAG Full}
+        \label{fig:flow-rag-hyde}
+\end{figure}
+
+
+\begin{enumerate}
+    \item \textbf{Query received.} The orchestrator receives the user query.
+    \item \textbf{HyDE generation.} The query is sent to the LLM node, which generates a hypothetical answer.
+    \item \textbf{Embedding.} The embedding node encodes either the original query or the hypothetical document produced by HyDE.
+    \item \textbf{Hybrid retrieval.} The database node performs dense and sparse search, fuses results and returns candidate documents.
+    \item \textbf{Reranking.} The embedding node reranks the candidates and selects the top-$n$ passages.
+    \item \textbf{Generation.} The LLM node generates the final answer conditioned on the reranked context.
+    \item \textbf{Response returned.} The orchestrator returns the answer to the user.
+\end{enumerate}
+
+This execution is serial: each stage must complete before the next begins. All queries incur the full computational path regardless of their complexity or characteristics.
+
+% ---------------------------------------------------------------------------
+\subsection{Configuration Space}
+\label{subsec:baseline-config}
+The three optional modules described above: HyDE, reranking and retrieval
+type. Each admits two states: on or off (dense or hybrid for retrieval type). 
+Combined possibilities listed in Table~\ref{tab:config-space}.
+
+% Combining
+% all possibilities yields $2^3 = 8$ configurations, listed in
+% Table~\ref{tab:config-space}.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccc}
+\hline
+\textbf{Config} & \textbf{HyDE} & \textbf{Reranking} & \textbf{Search type} \\
+\hline
+C0 & off & off & dense   \\
+C1 & on  & off & dense   \\
+C2 & off & on  & dense   \\
+C3 & off & off & hybrid  \\
+C4 & on  & on  & dense   \\
+C5 & on  & off & hybrid  \\
+C6 & off & on  & hybrid  \\
+C7 & on  & on  & hybrid  \\
+\hline
+\end{tabular}
+\caption{Configuration space ($2^3$ factorial design).}
+\label{tab:config-space}
+\end{table}
+
+C0 serves as the minimal baseline: only the core pipeline stages execute. C7 is the
+current CITI KMS deployment configuration and serves as the always-on reference against
+which energy savings are measured. Single-module configurations (C1, C2, C3) enable
+per-module attribution; multi-module configurations (C4--C6) test module interactions.
+The following chapter describes the measurement framework used to quantify
+the energy and performance characteristics across all eight configurations.

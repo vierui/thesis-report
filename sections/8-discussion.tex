@@ -1,0 +1,381 @@
+\newpage
+\section{Discussion}
+\label{sec:discussion}
+
+% Chapter purpose: Interpret the structural ceiling alongside quality
+% evaluation dependencies and module-space limitations.  Lead with
+% information asymmetry, then lambda dominance, then HyDE resolution,
+% then quality evaluation, then methodology.  State limitations and
+% future directions.
+
+
+\subsection{Summary of Findings}
+\label{subsec:synthesis}
+
+This thesis investigated whether per-query module activation can reduce
+energy consumption in locally deployed RAG systems without degrading answer
+quality.  Three results, each building on the previous, converge on a
+single conclusion.
+
+The baseline analysis (Chapter~\ref{sec:baseline_analysis}) confirmed that
+always-on module activation is measurably inefficient.  The full pipeline
+costs 5.6$\times$ more energy than the minimal pipeline, while
+quality improves by less than 0.06~points on either metric.  The cost is unconditional;
+the benefit is conditional and query-dependent.
+
+The decision problem formulation (Chapter~\ref{sec:controller}) quantified
+the opportunity.  In the full eight-configuration space, an oracle router
+saves 75\% energy versus always-C7(KMS Pipeline) by avoiding HyDE whenever possible.
+Restricting to the non-HyDE configurations actually tested for routing
+(\{C0, C2, C3, C6\}), the oracle saves 19\% versus always-C6 and 40\%
+of queries benefit from routing to a cheaper configuration.  Yet
+pre-execution query features explain near-zero variance in quality scores
+($R^2 \approx 0$), signalling that even this reduced opportunity may be
+difficult to exploit in practice.
+
+The routing investigation (Chapter~\ref{sec:strategies}) confirmed this
+difficulty.  Five routing strategies and three explorations, spanning
+three model classes, two feature sets and two decision
+architectures, all converge to a config accuracy of
+0.38--0.40.  No approach produces a statistically meaningful improvement
+over the cheapest-configuration baseline (Static~C0 at 0.382).  The
+ceiling is signal-limited, not model-limited.
+
+
+\subsection{Information Asymmetry}
+\label{subsec:ceiling-interpretation}
+
+The convergence of all routing strategies to the same narrow performance
+band is the thesis's central empirical finding.  The 60.5~percentage-point
+gap between oracle (100\%) and best router (39.5\%) is not a failure of
+modeling.  It quantifies information that exists at retrieval time but is
+invisible before pipeline execution.  This section interprets the nature
+of this asymmetry and what it implies for the field.
+
+\paragraph{A circular dependency.}
+Accurate routing requires post-retrieval signals: document scores,
+score gaps, source diversity.  The purpose of routing is to avoid
+executing retrieval variants that would produce those signals.  This
+creates a circular dependency: the information needed to route is
+produced by the very computation that routing aims to skip.
+
+Experiment E3 (Section~\ref{subsec:explorations})
+tested this directly.  Even after observing C0 retrieval statistics,
+the Stage~2 reranking classifier achieved AUC~$\approx 0.53$, barely
+above random.  The retrieval statistics answer ``how good was this
+retrieval?'' but not ``would a different retrieval strategy help this
+query?''  These are structurally different questions.
+
+\paragraph{Module-activation vs.\ model routing.}
+Table~\ref{tab:routing-comparison} contrasts three routing granularities.
+Model routing selects \emph{who answers}: the query goes to a strong or
+weak LLM with the same context.  Module-activation routing selects
+\emph{how to prepare the context}: which retrieval and post-retrieval
+stages run before generation.  The quality gap that a router must
+discriminate shrinks by an order of magnitude from model selection
+(10--30~pp) to module activation (2--4~pp), which directly limits the
+signal available to any classifier.
+
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{l l c l}
+\hline
+\textbf{System} & \textbf{Granularity} & \textbf{Quality gap} & \textbf{Reported savings} \\
+\hline
+RouteLLM~\cite{routellm2025}   & Model selection   & 10--30~pp & 50--85\% cost reduction \\
+FrugalGPT~\cite{frugalgpt2023} & Model cascade     & 10--30~pp & up to 98\% cost reduction \\
+This work                       & Module activation & 2--4~pp   & 39.5\% config accuracy \\
+\hline
+\end{tabular}
+\caption{Routing approaches by granularity.}
+\label{tab:routing-comparison}
+\end{table}
+
+In model routing, a router discriminates between generators that produce
+10--30~pp quality gaps on identical context.  In our module routing setup,
+the same generator receives slightly different retrieval preparations,
+compressing the quality gap to 2--4~pp while within-config noise stays
+constant.  Systems with larger module-level quality variation may face a
+more tractable routing problem.  Adaptive RAG systems
+(Self-RAG~\cite{selfrag2024}, CRAG~\cite{crag2024},
+Adaptive-RAG~\cite{adaptiverag2024}) operate at the strategy level where
+quality differences remain large enough to learn.  In our test case,
+finer-grained module control faces a structurally harder prediction
+problem.
+
+\paragraph{Signal-limited, not model-limited.}
+Because the ceiling is signal-limited, investing in more sophisticated
+classifiers (deeper networks, larger training sets, richer architectures)
+is unlikely to yield improvements within the current feature
+space.  The between-experiment accuracy spread (2~pp) is comparable to
+within-experiment cross-validation noise (1--2~pp).  The rational response
+is to deploy the simplest approach that captures the available signal and
+invest research effort in cheaper ways to access post-retrieval
+information.
+
+\paragraph{Characterising the boundary.}
+Defining a ceiling has methodological value.  The experiments
+consistently place the boundary at 0.38--0.40 config accuracy for
+pre-execution features on module-activation routing, empirically
+validated across five strategies and three explorations.  This delimits
+where future work is unlikely to yield gains under similar assumptions
+and identifies what is needed to break through: cheaper access to
+post-retrieval signals.  The 60.5~pp gap between oracle and achieved
+performance defines a concrete, quantified research target.
+
+
+\subsection{Energy Penalty ($\lambda$) Analysis}
+\label{subsec:lambda}
+
+Perhaps the most actionable finding is that the energy penalty
+parameter~$\lambda$ matters more than the choice of classifier, feature
+set or model architecture.  Across all experiments, the best results
+appear at $\lambda = 1.25$--$1.50$.  Without the energy penalty
+($\lambda = 0$), all models achieve 0.28--0.35, worse than Static~C0.
+Performance rises only as $\lambda$ increases, which pushes selections
+toward cheap configurations unless the classifier is confident.  In
+practice, this amounts to a soft version of ``always pick C0'': the
+utility function, not the classifier, drives accuracy above baseline.
+
+This observation shifts the RAG efficiency problem from a machine learning
+problem to a policy problem.  A high~$\lambda$ implements a
+cheap-by-default policy: expensive modules are assumed unnecessary unless
+the quality signal strongly indicates otherwise.  For locally deployed
+systems with constrained energy budgets, this policy is the most
+defensible strategy.  It requires no additional model, no training
+infrastructure and no runtime overhead beyond the utility calculation.
+
+The classifier's marginal contribution is the 1--2~pp it adds on top of
+the $\lambda$-driven default.  Tuning a single scalar parameter
+outperforms all model-selection experiments in this thesis.
+
+
+\subsection{The HyDE Variance}
+\label{subsec:hyde}
+
+Hypothetical Document Embeddings (HyDE)~\cite{hyde2023} is widely
+reported as beneficial in RAG pipelines, particularly for bridging
+vocabulary gaps between queries and documents.  Our results contradict
+this: HyDE degrades quality ($-$0.013~fc, $-$0.021~faithfulness) at
+5.3$\times$ the energy cost of the minimal pipeline.  This led to its
+exclusion from the routing configuration space.
+
+The contradiction likely reflects an interaction between HyDE and the
+retrieval architecture.  HyDE was designed for sparse retrieval systems
+where lexical mismatch dominates.  In our dense-retrieval setup using
+BGE-M3, the embedding model already bridges vocabulary gaps.  We
+hypothesise that the hypothetical document generated by the LLM pushes
+the query embedding into semantically adjacent but factually irrelevant
+regions of the vector space.  Where sparse retrieval benefits from
+vocabulary expansion, dense retrieval suffers from what we term
+\emph{semantic drift}: the hypothetical introduces noise into an already
+well-positioned query vector.  Confirming this hypothesis requires
+comparing query and hypothetical-document embeddings directly in the
+vector space and remains an open direction for future work.
+
+This result does not invalidate HyDE as a technique.  It demonstrates
+that module utility is system-dependent: a component that improves one
+retrieval architecture may degrade another.  The 75\% oracle energy
+saving in the full configuration space is primarily an engineering
+decision (disabling a harmful module), while the 19\% saving in the
+non-HyDE routing space is the algorithmic ceiling for per-query routing.
+These two numbers quantify different opportunities: the first is
+immediately actionable, the second defines the research target.
+
+
+\subsection{Methodological Legacy}
+\label{subsec:methodology}
+
+The measurement framework developed in
+Chapter~\ref{sec:method_protocol} is the most transferable artifact of
+this thesis.  The framework implements three design principles:
+session-scoped energy counters, pipeline-stage markers and per-node
+attribution.  These generalise to any distributed system with toggleable
+components.  The instrumentation code, configuration API and analysis
+pipeline are available as part of the CITI~KMS repository.  While the
+absolute energy numbers are system-specific, the methodology enables any
+modular RAG deployment to quantify its own trade-offs and assess routing
+potential without modifying pipeline stages.
+
+\paragraph{Quality evaluation.}
+The routing pipeline depends on quality labels, which depend on evaluation
+metrics, which depend on the evaluator model.  This dependency chain
+(evaluator $\to$ thresholds $\to$ labels $\to$ routing signal) means
+that evaluation quality propagates through every downstream result.
+If the labels are unreliable, no classifier can learn a meaningful
+decision boundary regardless of feature strength.
+
+We use Qwen2.5-14B-Instruct as evaluator and a different model family
+(R-4B) as generator, avoiding self-evaluation bias where models favour
+their own generation patterns~\cite{vrageval2024}.  Wang~et~al.\ report
+that evaluator size determines reliability: 8B~models achieve 36.8\%
+human agreement on binary accept/reject versus 82.6\% for
+GPT-4-class models.  Our 14B~evaluator sits between these extremes.
+The choice of RAGAS was driven by its existing integration within the
+system infrastructure; methodologically, it operationalises the
+LLM-as-a-judge paradigm by decomposing answers into verifiable
+claims~\cite{ragevalsurvey2025}.  Any inconsistency in the judge's
+scoring propagates directly into the routing labels.  A comparison with
+alternative frameworks (ARES, vRAG-Eval) would verify whether the
+structural ceiling is judge-invariant.
+
+The ICC analysis in Section~\ref{subsec:quality-labeling} shows that each
+metric privileges a different aspect of the pipeline.  Answer~F1
+(ICC\,=\,0.825) captures lexical overlap but treats all configurations as
+near-interchangeable, making it unsuitable for routing supervision.
+Faithfulness (ICC\,=\,0.432) has the strongest between-configuration
+variance but evaluates generation consistency rather than factual
+accuracy.  Factual correctness (ICC\,=\,0.583) balances the two but
+depends on the evaluator model's decomposition of claims.  The E2
+exploration (Section~\ref{subsec:explorations}) confirms that the metric
+choice is decisive: only factual correctness combined with faithfulness
+at $\tau = 0.7$ produces a positive routing margin; all other combinations
+collapse to baseline or below.
+
+For a knowledge management deployment, the priority is whether the answer
+contains the correct information (factual correctness) and does not
+fabricate unsupported claims (faithfulness).  Lexical overlap with a
+reference answer matters less when users seek explanations rather than
+exact phrases.  The structural ceiling of 0.38--0.40 config accuracy may
+therefore reflect not only information asymmetry but also label noise from
+imperfect evaluation.  These two sources of difficulty compound: even if
+corpus-aware features provided stronger signal, noisy labels would limit
+what a classifier can learn from them.  Establishing a validated,
+domain-appropriate quality evaluation method is the logical first step
+before investing in richer routing features.
+
+
+\subsection{Limitations}
+\label{subsec:limitations}
+
+Several limitations constrain the generalisability of these findings.
+
+\paragraph{System generalisability.}
+All experiments use the CITI~KMS pipeline with a specific LLM size,
+embedding model, retrieval backend and three toggleable modules (HyDE,
+reranking, hybrid search) inherited from the existing system rather than
+selected from a systematic survey.  Advanced RAG architectures offer
+additional modules---query decomposition, web-search fallback
+(CRAG~\cite{crag2024}), self-reflective generation
+(Self-RAG~\cite{selfrag2024}), document summarisation, answer
+verification---each with different energy costs.  The 2--4~pp quality gap
+may be specific to this module set; a broader module space could produce
+a more tractable routing problem.  All measurements also assume
+single-request sequential execution; concurrent workloads may change
+energy patterns due to resource contention and GPU utilisation differences.
+The absolute numbers (e.g., 5.6$\times$ energy ratio) are
+system-specific; the methodology and ceiling characterisation approach
+generalise.
+
+\paragraph{Dataset scope and feature transferability.}
+HotpotQA provides multi-hop reasoning queries only, and the experiment
+uses a corpus built from gold supporting documents.  In open-domain
+retrieval, where relevant documents may be absent or diluted, the quality
+surface may differ and could create stronger routing signals.  The two
+most important routing predictors are dataset-specific:
+\texttt{q\_has\_logical\_operator} appears in 61\% of HotpotQA queries
+versus 22\% of KILT queries (39~pp gap), and \texttt{q\_multi\_entity}
+in 76\% versus 45\% (31~pp gap).  Both features reflect multi-hop
+structure rather than a general query property.  A router trained on
+these features would encounter a substantially different input
+distribution on factoid or verification queries, limiting
+transferability without retraining.
+
+\paragraph{Title-level provenance evaluation.}
+HotpotQA annotates supporting facts as (title, sentence\_id) pairs; the
+official Sup~F1 operates at sentence granularity.  Our system chunks
+Wikipedia articles by character count (1{'}024-character windows with
+200-character overlap), not by sentence boundaries.  Our Sup~F1 evaluates
+at title level and is not directly comparable to leaderboard scores.
+
+\paragraph{LLM-as-judge evaluation.}
+Quality evaluation relies on RAGAS with Qwen2.5-14B-Instruct as the
+evaluator model.  LLM-based evaluation introduces its own biases.  We
+mitigate this by using the same evaluator consistently across all
+configurations, so relative comparisons remain valid even if absolute
+scores carry systematic bias.
+
+\paragraph{Limited feature set.}
+The 23~pre-execution features are a first attempt at characterising query
+difficulty for routing.  Richer features (query--document interaction
+signals, LLM self-assessment or lightweight retrieval probes) may carry
+stronger discriminative power, though the ceiling analysis suggests this
+is unlikely without accessing post-retrieval information.
+
+
+\subsection{Future Directions}
+\label{subsec:future}
+
+The ceiling finding defines the research agenda: how to access
+post-retrieval information without incurring its full cost.
+
+\paragraph{Lightweight retrieval probing.}
+The circular dependency can be partially broken if a cheap retrieval
+approximation provides routing-relevant signal.  A sparse retrieval
+probe (e.g., BM25) that costs milliseconds rather than seconds could
+estimate whether hybrid search or reranking would help a specific query.
+If a BM25 score gap predicts reranking benefit, the router gains access
+to post-retrieval signals at a fraction of the pipeline cost.
+
+\paragraph{Transfer to model routing.}
+Module-activation routing faces quality gaps of 2--4~percentage points;
+model routing faces gaps of 10--30~pp.  Investigating whether the same
+query features that fail for module routing succeed for model routing
+would clarify the relationship between signal strength and routing
+granularity.  Success would confirm that the ceiling is specific to
+fine-grained module control, not to query-feature-based routing in
+general.
+
+\paragraph{Multi-task workloads.} A production RAG system serves diverse query types.  Different query
+types (factoid, verification, multi-hop) may create more separable
+routing populations.  Routing accuracy may improve when the training
+set spans multiple task distributions with larger between-type
+quality variation.
+
+\paragraph{Non-routable query detection.} The 445~queries (37\%) that fail under all eight configurations represent
+a system quality limitation, not a routing limitation.  If non-routable
+queries are detectable pre-execution, a router could abstain rather than
+waste energy on queries likely to fail regardless.  This binary
+distinction may be more tractable than configuration selection, since the
+routable/non-routable gap is larger than the 2--4~pp quality gap between
+configurations.
+
+\paragraph{Online learning.} Adapting the routing policy from production feedback using contextual
+bandits or reinforcement learning would enable continuous improvement
+without requiring forced-run experiments.  This is particularly relevant
+because the quality landscape may shift as the document corpus evolves.
+
+\paragraph{Corpus-aware embedding features.}
+The 23~pre-execution features characterise queries in isolation from the
+indexed document collection.  Since BGE-M3 embeddings already exist for
+all indexed documents, principal component analysis of the corpus
+embedding space could yield routing features at negligible cost.
+Projecting each query into the first 100--150 principal components of the
+document cloud enables features such as distance to the corpus centroid,
+local document density and cluster membership.  UniRoute~\cite{uniroute2025}
+provides theoretical grounding for cluster-based routing, demonstrating
+Bayes-optimal routing with bounded excess risk when queries are assigned
+to corpus clusters.  These features partially break the circular
+dependency (Section~\ref{subsec:ceiling-interpretation}) by providing
+corpus awareness without executing retrieval variants.  They remain
+pre-execution, so they cannot access actual retrieved document quality,
+but they represent a middle ground between query-only surface features
+and the full cost of post-retrieval signals.
+
+\paragraph{Broader module evaluation.}
+The three modules tested in this work span query expansion, retrieval
+strategy and post-retrieval filtering.  Production RAG systems may
+include additional stages: query decomposition for complex questions,
+web-search fallback for corpus gaps, answer verification against retrieved
+evidence or document summarisation before generation.  Each module
+introduces a different energy--quality trade-off.  Systematically
+evaluating the quality contribution of each candidate module---before
+attempting to route among them---would establish which modules produce
+quality differences large enough to be learnable by a pre-execution
+router.
+
+\paragraph{Energy measurement under concurrent workloads.}
+Extending the measurement framework to multi-tenant scenarios would
+quantify how resource contention affects per-request energy attribution
+and whether routing decisions remain valid under production load.

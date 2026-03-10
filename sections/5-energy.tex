@@ -1,0 +1,540 @@
+\newpage
+\section{Performance Analysis}
+\label{sec:baseline_analysis}
+
+% Chapter purpose: Prove the problem exists.
+% Present empirical evidence that always-on module activation is measurably inefficient.
+% Three dimensions: energy (5.1), latency (5.2), quality (5.3), then synthesis (5.4).
+% Figures source: src/lkc-llm/scripts/experiments/hotpot/2-performance/output/plots/
+%                 src/lkc-llm/scripts/experiments/hotpot/3-quality/output/plots/
+
+
+\subsection{Energy Breakdown}
+\label{subsec:energy-breakdown}
+
+% --- Experimental anchor ---
+
+Earlier, we introduced the hypothesis that the optional RAG stages
+require more energy, implying that not all of the options need to be active for
+every query to produce acceptable answers. To test this claim, we executed all
+1{'}200~queries under each of the eight configurations, producing
+9{'}600~sessions under the protocol defined earlier.
+This section presents the energy dimension of
+that experiment. The main comparison is between C0 (minimal pipeline) and C7
+(all options enabled); single-module configurations (C1, C2, C3) isolate
+per-modules contributions. Table~\ref{tab:configs} lists all eight
+configurations and their module settings.
+
+% --- Total energy per request and Energy/token
+
+The figure below reports the mean total energy per request across
+all eight configurations. The baseline consumes 318~J per request on average, while the
+KMS pipeline consumes 1{'}786~J---a ratio of 5.6$\times$.
+
+Energy is measured as counter deltas over session windows without subtracting
+idle baseline power. During HyDE's additional 4.3\,s, the embedding and
+database nodes accumulate an estimated $\sim$70\,J of idle draw---approximately
+5\% of HyDE's 1{'}355\,J marginal cost. The qualitative finding is unchanged.
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.85\textwidth]{total_energy_by_config.png}
+    \caption{Mean total energy per request across configurations}
+    \label{fig:total-energy}
+    % Source: hotpot/2-performance/output/plots/total_energy_by_config.png
+\end{figure}
+
+Two energy clusters emerge:
+\begin{itemize}
+    \item Configurations that include HyDE (C1, C4, C5, C7) form a high-energy group 
+    between 1{'}666--1{'}786~J.
+    \item Configurations not including HyDE which cluster below 435~J, with hybrid retrieval (C3)
+    nearly identical to C0 (324~J against 318~J), adding only 2\% energy overhead.
+\end{itemize}
+
+Module costs are approximately additive given the hybrid search influence.
+C7 (1{'}786~J) exceeds C4 (1{'}783~J) by only 3~J, closely matching the 6~J cost of hybrid retrieval
+alone (C3$-$C0). Given that, the per-module analysis in the next section characterises
+each module's energy overhead, focusing on the cross-module comparisons.
+
+% --- Stage-level energy attribution ---
+
+Table~\ref{tab:stage-energy} details the five measured stages for C0 and C7.
+The prompt augmentation stage (HyDE) is the largest single contributor in the
+full pipeline, consuming 1{'}271~J---4.0$\times$ the entire baseline (C0)
+request. Reranking adds 111~J. Answer generation remains roughly constant
+across configurations (268--302~J), indicating that the LLM generation phase
+does not vary with retrieval enrichment.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{l r r}
+\hline
+\textbf{Pipeline stage} & \textbf{Baseline (J)} & \textbf{KMS Pipeline (J)} \\
+\hline
+Embedding           &  43.2 &   63.6 \\
+HyDE (prompt aug.)  &   --- & 1354.5 \\
+Retrieval (DB)      &   7.0 &   38.1 \\
+Reranking           &   --- &  105.8 \\
+Generation          & 267.7 &  302.4 \\
+\hline
+\end{tabular}
+\caption{Stage-level energy attribution (C0 vs C7).}
+\label{tab:stage-energy}
+\end{table}
+
+% --- Feature attribution ---
+
+The differential view $\Delta E = E(\text{C}_i) - E(\text{C0})$ quantifies
+each module's mean marginal cost (Figure~\ref{fig:feature-attribution}). HyDE adds
+1{'}355~J per request, reranking adds 106~J and hybrid adds 6~J. HyDE's
+marginal cost exceeds the total energy of C0 by a factor of 4.3. The three
+modules differ by two orders of magnitude in energy cost.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.85\textwidth]{feature_attribution_energy.png}
+    \caption{Marginal energy cost of each module (delta from C0).}
+    \label{fig:feature-attribution}
+    % Source: hotpot/2-performance/output/plots/feature_attribution_energy.png
+\end{figure}
+
+% --- Energy per token ---
+
+Normalizing by total token count yields energy per token (J/tok), which
+controls for additional tokens and enables fairer comparison across setups.
+C0 consumes 0.39~J/tok while C7 consumes 1.44~J/tok---a 3.7$\times$ ratio,
+compressed from the 5.6$\times$ total energy ratio. HyDE generates
+additional tokens and remains the most expensive after normalization, 
+confirming that the overhead is structural
+(an additional LLM call) rather than a token count artifact.
+
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{mean_energy_per_token.png}
+        \caption{Mean energy per token}
+        \label{fig:energy-per-token-bar}
+        % Source: hotpot/2-performance/output/plots/mean_energy_per_token.png
+    \end{subfigure}%
+    \hfill
+    \begin{subfigure}[t]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{node_energy_per_token_decomposition.png}
+        \caption{Energy per token by infrastructure node}
+        \label{fig:node-decomposition}
+        % Source: hotpot/2-performance/output/plots/node_energy_per_token_decomposition.png
+    \end{subfigure}
+    \caption{Energy per token by configuration}
+    \label{fig:energy-per-token-combined}
+\end{figure}
+
+% --- Node-level decomposition prose ---
+
+Figure~\ref{fig:node-decomposition} decomposes energy per token into the three
+infrastructure nodes. The LLM node dominates across all configurations; HyDE
+(C1) amplifies LLM node cost through an additional generation pass. The
+embedding node contributes a smaller fraction and the Milvus node is negligible.\\
+
+
+HyDE amplifies LLM node energy because it adds a full generation pass before
+retrieval. In C1 (HyDE only), the LLM node consumes 1{'}491~J compared to
+268~J in C0---a 5.6$\times$ increase on a single node. Reranking primarily
+loads the embedding node: C2 raises embedding energy from 43~J (C0) to 66~J,
+because the cross-encoder model runs on this node.
+
+% --- Node-device CPU/GPU decomposition ---
+
+
+Decomposing CPU and GPU energy by infrastructure node reveals that
+the absolute energy differs by an order of magnitude across nodes. As expected,
+GPU energy dominates only the two model nodes with 80--92\% GPU usage. The
+Milvus node is only 42--43\% GPU---vector retrieval relies more on CPU than
+on GPU. This aligns with Chen~et~al.~\cite{cpucentric2025}, who report that
+CPU accounts for 90.6\% of latency but only 44\% of energy in agentic RAG
+workloads. The hardware cost structure differs across pipeline stages, even
+when the aggregate CPU/GPU split appears constant (79--81\% GPU across all
+configurations).
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.95\textwidth]{node_device_faceted.png}
+    \caption{CPU/GPU energy split per infrastructure node}
+    \label{fig:node-device}
+    % Source: hotpot/2-performance/output/plots/node_device_faceted.png
+\end{figure}
+
+
+% --- Distributional view ---
+
+The HotpotQA dataset could in principle produce
+different energy profiles across query subtypes.
+Figure~\ref{fig:energy-by-querytype} shows that the configuration ranking
+holds consistently across both subtypes.
+Bridge queries exhibit wider energy distributions than comparison queries,
+particularly in HyDE-enabled configurations. 
+Paradoxically, they also consume slightly more
+energy and latency on average, yet achieve higher retrieval scores (0--1
+scale, higher is better).
+
+% --- Section summary ---
+
+In summary, enabling all modules (C7) costs 5.6$\times$ more energy than the
+minimal pipeline (C0). The cost is dominated by HyDE's additional LLM
+generation pass, which alone adds 1{'}355~J---more than four times the entire
+C0 baseline. Module costs are approximately additive and consistent across
+query subtypes. The LLM node carries 84--88\% of total energy, though hardware
+utilization differs by node: GPU-dominated for LLM and embedding, CPU-heavy
+for vector retrieval. 
+% Section~\ref{subsec:latency-energy} 
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.9\textwidth]{energy_by_query_type.png}
+    \caption{Energy distribution by query subtype}
+    \label{fig:energy-by-querytype}
+    % Source: hotpot/2-performance/output/plots/energy_by_query_type.png
+\end{figure}
+
+\subsection{Energy-Latency Correlation}
+\label{subsec:latency-energy}
+
+% --- Latency by configuration ---
+We examine the latency dimension and the relationship between energy and execution time.
+
+The figure below reports the TTFT(left) and response generation time (right). 
+the mean TTFT ranges from 982~ms (C0) to 6{'}153~ms (C7); a
+6.3$\times$ difference. The latency structure mirrors the energy clusters
+from Section~\ref{subsec:energy-breakdown} where C0 and C3 share the lowest TTFT
+($\sim$982--1{'}032~ms) followed by reranking configurations, then HyDE configurations 
+and then combined configurations around
+6{'}109--6{'}153~ms.
+
+The answer generation time is approximately constant across
+all configurations ($\sim$112~ms). It confirms that the LLM generation phase
+does not vary with retrieval enrichment.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.9\textwidth]{latency_by_config.png}
+    \caption{TTFT and total response time per configuration}
+    \label{fig:latency-by-config}
+    % Source: hotpot/2-performance/output/plots/latency_by_config.png
+\end{figure}
+
+Again, HyDE module imposes the largest TTFT penalty because it requires a complete LLM
+generation pass before retrieval can begin. The HyDE adds 4{'}293~ms to TTFT,
+reranking adds 825~ms and hybrid adds 50~ms. The combined TTFT of C7
+(6{'}153~ms) closely matches the sum of individual deltas
+(C0 + HyDE + reranking + hybrid = 982 + 4{'}293 + 825 + 50 = 6{'}150~ms),
+confirming that module latencies are again approximately additive.
+
+% --- Cross-dimension cost summary ---
+
+Table~\ref{tab:module-cost} consolidates energy and latency costs per module.
+The three modules differ by two orders of magnitude in cost. HyDE
+adds 1{'}355~J and 4{'}293~ms; hybrid adds 6~J and 50~ms. This
+asymmetry has direct implications for control: hybrid retrieval can be
+enabled generously, while HyDE activation must be selective to achieve
+meaningful energy savings.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{l r r r}
+\hline
+\textbf{Module} & \textbf{$\Delta$Energy (J)} & \textbf{$\Delta$TTFT (ms)} & \textbf{$\Delta$Total time (ms)} \\
+\hline
+HyDE              & +1{'}355 & +4{'}293 & +4{'}292 \\
+Reranking          & +106     & +825     & +822 \\
+Hybrid retrieval   & +6       & +50      & +46 \\
+\hline
+\end{tabular}
+\caption{Per-module marginal cost (C0 delta).}
+\label{tab:module-cost}
+\end{table}
+
+% --- Energy-latency relationship ---
+
+The parallel structure of energy and latency raises a practical question:
+can latency serve as a proxy for energy? Prior work often treats response time
+as a stand-in for computational cost; it is straightforward to measure
+and directly interpretable. 
+
+To test this assumption, Figure~\ref{fig:energy-latency-regression} plots both total
+energy (right panel) and energy per token (left panel) against total response
+time for all 9{'}600~sessions. Linear regression of total energy on response
+time yields $R^2 = 0.978$ with a slope of 310~J/s---confirming that latency
+is a strong first-order proxy. The energy-per-token regression yields a
+lower $R^2 = 0.860$, reflecting the additional variance introduced by
+token-generation efficiency across configurations.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.95\textwidth]{energy_latency_regression.png}
+    \caption{Energy versus total response time}
+    \label{fig:energy-latency-regression}
+    % Source: hotpot/2-performance/output/plots/energy_latency_regression.png
+    %    across 9{'}600~sessions. Left:energy per token versus: total response time ($R^2 = 0.860$). Right: totalenergy versus total response time ($R^2 = 0.978$). The global correlationis strong, but per-configuration slopes (colored lines) diverge.
+\end{figure}
+
+The 12-point gap between the two $R^2$ values (0.978 vs 0.860) shows that
+latency is a good but imperfect proxy for per-token energy cost. Configurations that
+activate reranking draw less instantaneous power than those that invoke HyDE; a 
+cross-encoder pass is less GPU-intensive than a full LLM generation
+step. 
+%Two sessions with identical latency can therefore differ in energy per
+%token.
+
+Most studies report only latency; fewer measure total energy, as power
+instrumentation is not straightforward. Rago et al.~\cite{rago2025}
+recommended energy per token (J/tok) as an energy metric but listed
+it as future work only.
+% Our setup implements this metric; the $R^2 = 0.860$
+% result confirms that it captures variance that latency alone misses.
+
+% --- Energy-latency residuals ---
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.8\textwidth]{energy_latency_residuals.png}
+    \caption{Energy--latency residuals by configuration}
+    \label{fig:energy-latency-residuals}
+    % Source: hotpot/2-performance/output/plots/energy_latency_residuals.png
+\end{figure}
+
+The figure below makes the deviation explicit.
+Reranking configurations (C2, C6) consume 81--91~J \emph{less} energy than
+predicted by their latency, while non-reranking configurations (C0, C1, C3,
+C5) consume 60--90~J \emph{more} than predicted. 
+
+Positive values indicate configurations that consume more energy than predicted by their
+latency; negative values indicate power-frugal configurations. The residuals expose two
+distinct hardware utilization regimes:
+
+\begin{itemize}
+    \item reranking is ``power-frugal'' (lower GPU intensity from the cross-encoder) 
+    \item HyDE is ``GPU-intensive'' (sustained GPU utilization for an additional LLM call). 
+\end{itemize}
+
+% Power draw (defined as $E_\text{total} / t_\text{total}$) ranges
+% from 217~W (C6) to 309~W (C1), a 40\% spread.
+
+
+Latency is therefore a good proxy for fast energy
+approximation or when direct measurement is impractical.
+Guo~et~al.~\cite{keplerenergy2026} reach a similar conclusion in their RAG
+experiment and caution that ``the relationship is not perfectly linear.'' Our
+results do not improve on this approximation, but they quantify the deviation:
+two configurations with equal latency can, in our case differ by up to 
+40\% in energy. For accurate per-query cost attribution, energy per token is a more precise
+metric; accounts for both power draw variation and output length.
+
+% --- Energy per token vs latency ---
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.8\textwidth]{energy_per_token_vs_latency.png}
+    \caption{Energy per token versus total response time}
+    \label{fig:energy-per-token}
+    % Source: hotpot/2-performance/output/plots/energy_per_token_vs_latency.png
+    % HyDE-containing configurations cluster in the high-cost region even after normalization.m n
+\end{figure} 
+
+Figure~\ref{fig:energy-per-token} illustrates this point. The baseline consumes
+0.39~J/token while the full pipeline consumes 1.44~J/token---a 3.7$\times$ ratio.
+HyDE configurations remain the most expensive after normalization, confirming 
+structural overhead rather than a token count artifact.
+
+% HyDE configurations generate additional tokens (the hypothetical document),
+% which compresses the ratio from 5.6$\times$ (total energy) to 3.7$\times$
+% (J/tok). 
+
+% --- Section summary ---
+
+Module costs are highly asymmetric: HyDE dominates both energy and latency,
+reranking imposes moderate cost and hybrid retrieval is nearly free. Costs are
+approximately additive across modules. The energy-latency relationship is
+strong ($R^2 = 0.978$ globally) but configuration-dependent: power draw ranges
+from 217~W (reranking) to 309~W (HyDE), so latency alone does not fully
+determine energy cost. The energy ordering is more robust under per-token
+normalization. Next, we ask whether this cost buys
+proportional quality improvement.
+
+
+\subsection{Quality Trade-offs}
+\label{subsec:energy-quality}
+
+% --- Block A: Introducing quality ---
+
+We just established that optional modules impose large and asymmetric energy and
+latency overhead. A natural intuition is that these modules improve answer
+quality and that the cost is therefore justified. To evaluate this claim, we
+examine quality outcomes per configuration using two RAGAS metrics:
+
+\begin{itemize}
+    \item \textbf{Faithfulness} fraction of claims supported by retrieved context
+    \item \textbf{Factual correctness} semantic agreement with the reference answer
+\end{itemize}
+
+These two metrics capture complementary failure modes:
+hallucination versus factual error.
+
+% --- Block B: Quality scores across configurations ---
+
+Factual correctness ranges from 0.590 (C5) to 0.633 (C6) across all eight
+configurations; a spread of 0.043~points. Faithfulness is wider but still
+modest, ranging from 0.771 (C1) to 0.830 (C7); a spread of 0.060~points.
+Contrast this with the energy dimension: a 5.6$\times$ energy range produces
+less than 6\% of quality variation on either metric. 
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=1.0\textwidth]{quality_heatmap_combined.png}
+    \caption{Quality deltas from baseline (C0)}
+    \label{fig:feature-attribution-quality}
+    % Source: hotpot/3-quality/output/plots/feature_attribution_quality.png
+    % per pipeline enhancement across four metrics. Reranking consistently improves quality; HyDE consistently degrades it.
+\end{figure}
+
+Within-configuration variance dominates between-configuration differences:
+the 95\% confidence interval for factual correctness within any single
+configuration ($\pm$0.023) covers more than half the cross-configuration
+range (0.043). This indicates that query-level difficulty drives quality more
+than module activation does.
+
+% --- Block C: Quality varies by query subtype ---
+
+The Figure~\ref{fig:feature-attribution-quality} (right) splits
+factual correctness by querysubtype. Comparison queries score consistently higher than bridge queries
+across all configurations with a small gap of 0.08--0.15~points. Within each
+subtype, reranking configurations (C2, C4, C6, C7) outperform non-reranking
+ones. For bridge queries, C6 (hybrid + reranking) achieves the highest score
+(0.588), while C5 (HyDE + hybrid) produces the lowest (0.521). For comparison
+queries, C2 (reranking only) leads (0.687), while C1 (HyDE only) scores lowest
+(0.652).
+
+HyDE degrades quality on both subtypes: comparing each HyDE configuration with
+its non-HyDE equivalent yields
+factual correctness deltas between $-$0.001 and $-$0.014~points. The effect is
+small but consistently negative, meaning HyDE adds substantial energy cost
+while providing no quality return on the workload.
+
+The figure~\ref{fig:feature-attribution-quality} generalizes this per-feature
+analysis across four quality metrics. Reranking improves all four metrics
+(+0.014~fc, +0.025~faithfulness, +0.017~support~F1, +0.032~context recall).
+HyDE degrades all four ($-$0.013~fc, $-$0.021~faithfulness,
+$-$0.005~support~F1, $-$0.033~context recall). Hybrid retrieval
+shows mixed effects: negative on factual correctness ($-$0.013), support~F1 ($-$0.009)
+and context recall ($-$0.031) but near-zero on faithfulness.
+
+% --- Block D: Energy-quality tension quantified ---
+
+Table~\ref{tab:energy-quality} compares energy multipliers with quality deltas
+for each module. HyDE (C1 versus C0) increases energy by 5.3$\times$ while
+\emph{decreasing} average factual correctness by 0.013~points and faithfulness
+by 0.021~points. Reranking (C2 versus C0) increases energy by 1.3$\times$ for
+quality gains of 0.014 (fc) and 0.025 (faithfulness). Hybrid retrieval (C3
+versus C0) increases energy by 1.02$\times$ with a small negative effect on
+factual correctness ($-$0.013) and negligible effect on faithfulness (+0.001).
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{l r r r}
+\hline
+\textbf{Module} & \textbf{Energy ratio} & \textbf{$\Delta$ Factual corr.} & \textbf{$\Delta$ Faithfulness} \\
+\hline
+HyDE (C1)       & 5.3$\times$ & $-$0.013 & $-$0.021 \\
+Reranking (C2)   & 1.3$\times$ & $+$0.014 & $+$0.025 \\
+Hybrid (C3)      & 1.02$\times$ & $-$0.013 & $+$0.001 \\
+All (C7)         & 5.6$\times$ & $+$0.016 & $+$0.038 \\
+\hline
+\end{tabular}
+\caption{Energy--quality trade-off per module (C0 delta).}
+\label{tab:energy-quality}
+\end{table}
+
+The full pipeline (C7) produces a quality improvement of 0.016~points in
+factual correctness and 0.038~points in faithfulness at a cost of
+5.6$\times$ energy. The quality gain is driven entirely by reranking; HyDE
+contributes no positive effect. The relationship between energy investment and
+quality return is nonlinear: the first 2\% energy increase (hybrid) yields no
+quality improvement, while an additional 31\% (reranking) produces +0.014~fc
+and +0.025~faithfulness. The remaining 330\% energy increase from HyDE adds no
+further quality benefit.
+
+Figure~\ref{fig:quality-vs-energy-scatter} visualizes this tension. The
+x-axis reports mean energy per token (J/tok) rather than total energy to
+control for token-count differences introduced by HyDE's additional
+generation pass (Section~\ref{subsec:latency-energy}). Two clusters emerge:
+non-HyDE configurations (C0, C2, C3, C6) occupy the low-cost region
+(0.39--0.51~J/tok), while HyDE configurations (C1, C4, C5, C7) cluster
+above 1.36~J/tok with no systematic quality advantage. The Pareto frontier
+contains C6 (hybrid + reranking, 0.633~fc at 0.51~J/tok) and C2 (reranking
+only, 0.630~fc at 0.50~J/tok).
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.85\textwidth]{quality_vs_energy.png}
+    \caption{Factual correctness versus energy per token}
+    \label{fig:quality-vs-energy-scatter}
+    % Source: hotpot/3-quality/output/plots/quality_vs_energy.png
+\end{figure}
+
+% --- Block E: Section summary ---
+
+Quality differences across configurations are small (less than 0.06~points on
+both metrics) and vary by subtype. Energy differences are large
+(5.6$\times$). HyDE produces the worst cost-to-quality ratio: it increases
+energy by 5.3$\times$ while degrading both quality metrics. Reranking offers
+the best ratio: moderate cost (1.3$\times$) for consistent quality improvement.
+
+In the context of the HotpotQA dataset, HyDE should be disabled by default.
+Across all analyses, HyDE is unambiguously negative for this workload:
+5.3$\times$ energy, +4{'}293\,ms latency, $-$0.013~factual correctness
+and $-$0.021~faithfulness. The effect is consistent across query subtypes
+and all four quality metrics. The immediate practical recommendation is to
+disable HyDE and operate in the \{C0, C2, C3, C6\}~space.
+
+Within this reduced space, C6 (hybrid + reranking) sits on the Pareto
+frontier at 0.633~factual correctness and 435\,J per request---1.37$\times$
+C0's energy for the highest quality among non-HyDE configurations. C2
+(reranking only) achieves 0.630~fc at 424\,J. The choice between
+always-C6 and always-C0 is the most actionable deployment decision: it
+requires zero routing infrastructure and captures the quality--energy
+trade-off at its sharpest point.
+
+Section~\ref{subsec:hypothesis-validation} synthesizes all three dimensions.
+
+
+\subsection{Hypothesis Validation}
+\label{subsec:hypothesis-validation}
+
+% --- Module-level summary ---
+
+The three preceding sections converge on one pattern: cost is unconditional
+but benefit is conditional. Each module exhibits a distinct profile:
+
+\begin{itemize}
+    \item \textbf{HyDE}: highest cost (5.3$\times$ energy, 4{'}293~ms
+          latency), negative quality effect ($-$0.013~fc, $-$0.021~faith).
+    \item \textbf{Reranking}: moderate cost (1.3$\times$ energy, 825~ms
+          latency), consistent quality gain (+0.014~fc, +0.025~faith).
+    \item \textbf{Hybrid retrieval}: negligible cost (1.02$\times$ energy,
+          50~ms latency), near-zero quality effect.
+\end{itemize}
+
+% --- The "trivial vs non-trivial" pivot ---
+
+If all modules degraded quality or left it unchanged, the solution would be
+straightforward: disable them and collect the energy savings. HyDE does so;
+it costs more energy and returns no
+quality benefit. Reranking does not; it consistently improves both
+faithfulness and factual correctness despite a modest magnitude.
+Also, no single configuration dominates across all queries and subtypes.
+
+However, it could be that a module that helps \emph{on average} does not necessarily help every
+query and a module that hurts on average may still help specific ones. Whether
+per-query patterns exist and whether they are predictable from the query
+alone is yet unknown. If module benefit varies across
+queries but follows no learnable pattern, then no routing model can outperform
+a static rule. The next chapter formalizes this as a decision
+problem and investigates whether the available signals support per-query
+configuration selection.

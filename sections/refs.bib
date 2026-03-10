@@ -1,0 +1,565 @@
+% ============================================================================
+% Thesis Bibliography
+% ============================================================================
+
+% Useful reference links (non-academic, kept for context):
+% erhwenkuo.github.io/langchain/tutorials/rag/rag_adv_part2/
+% pub.towardsai.net/advanced-rag-techniques-an-illustrated-overview-04d193d8fec6
+% medium.com/Mangusta/llms-training-vs-inference-97b02337cabb
+% explodingtopics.com/blog/chatgpt-users
+
+
+% ============================================================================
+% Section 2.1 - RAG Systems SOTA
+% ============================================================================
+
+@article{lightrag2025,
+  title={LightRAG: Simple and Fast Retrieval-Augmented Generation},
+  author={Guo, Zirui and Liang, Lianghao and Long, Yingkuan and Min, Yuliang and Wu, Cheng-Long and Zheng, Xiaolong},
+  journal={arXiv preprint arXiv:2410.05779},
+  year={2024},
+  note={Knowledge graph-enhanced retrieval for multi-hop reasoning}
+}
+
+@inproceedings{rago2025,
+  title={{RAGO}: Systematic Performance Optimization for Retrieval-Augmented Generation Serving},
+  author={Subramanian, Suvinay and others},
+  booktitle={International Symposium on Computer Architecture (ISCA)},
+  year={2025},
+  organization={IEEE/ACM},
+  note={Google, ETH Zurich, DeepMind. System-level co-optimization achieving 2x QPS/chip}
+}
+
+@inproceedings{rag2020,
+  title={Retrieval-Augmented Generation for Knowledge-Intensive {NLP} Tasks},
+  author={Lewis, Patrick and Perez, Ethan and Piktus, Aleksandra and Petroni, Fabio and Karpukhin, Vladimir and Goyal, Naman and K{\"u}ttler, Heinrich and Lewis, Mike and Yih, Wen-tau and Rockt{\"a}schel, Tim and Riedel, Sebastian and Kiela, Douwe},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS)},
+  volume={33},
+  pages={9459--9474},
+  year={2020},
+  note={Original RAG framework: combines pre-trained seq2seq model with dense retrieval over Wikipedia}
+}
+
+@article{reranking2024,
+  title={Is Cosine-Similarity of Embeddings Really About Similarity?},
+  author={Steck, Harald and others},
+  journal={arXiv preprint arXiv:2403.05440},
+  year={2024},
+  note={Analysis of reranking strategies and cross-encoder approaches}
+}
+
+% --- 2.1.2 Advanced RAG: Query Enhancement ---
+
+@article{stepback2023,
+  title={Take a Step Back: Evoking Reasoning via Abstraction in Large Language Models},
+  author={Zheng, Huaixiu Steven and Mishra, Swaroop and Chen, Xinyun and Cheng, Hao-Tsung and Chi, Ed H. and Le, Quoc V. and Zhou, Denny},
+  journal={arXiv preprint arXiv:2310.06117},
+  year={2023},
+  note={Google DeepMind. Step-back prompting: abstracts query into high-level principles before retrieval}
+}
+
+@article{queryrewriting2023,
+  title={Query Rewriting for Retrieval-Augmented Large Language Models},
+  author={Ma, Xinbei and Gong, Yeyun and He, Pengcheng and Zhao, Hai and Duan, Nan},
+  journal={arXiv preprint arXiv:2305.14283},
+  year={2023},
+  note={Rewrite-Retrieve-Read framework: LLM adapts query into effective search string before retrieval}
+}
+
+@article{ircot2022,
+  title={Interleaving Retrieval with Chain-of-Thought Reasoning for Knowledge-Intensive Multi-Step Questions},
+  author={Trivedi, Harsh and Balasubramanian, Niranjan and Khot, Tushar and Sabharwal, Ashish},
+  journal={arXiv preprint arXiv:2212.10509},
+  year={2022},
+  note={IRCoT: interleaves retrieval with reasoning steps for multi-hop question answering}
+}
+
+% --- 2.1.2 Advanced RAG: Retrieval Strategy ---
+
+@article{bm252009,
+  title={The Probabilistic Relevance Framework: {BM25} and Beyond},
+  author={Robertson, Stephen and Zaragoza, Hugo},
+  journal={Foundations and Trends in Information Retrieval},
+  volume={3},
+  number={4},
+  pages={333--389},
+  year={2009},
+  publisher={Now Publishers}
+}
+
+@inproceedings{splade2021,
+  title={{SPLADE}: Sparse Lexical and Expansion Model for First Stage Ranking},
+  author={Formal, Thibault and Piwowarski, Benjamin and Clinchant, St{\'e}phane},
+  booktitle={Proceedings of the 44th International ACM SIGIR Conference on Research and Development in Information Retrieval},
+  pages={2288--2292},
+  year={2021}
+}
+
+@article{rrf2009,
+  title={Reciprocal Rank Fusion Outperforms Condorcet and Individual Rank Learning Methods},
+  author={Cormack, Gordon V. and Clarke, Charles L. A. and Buettcher, Stefan},
+  journal={Proceedings of the 32nd International ACM SIGIR Conference on Research and Development in Information Retrieval},
+  pages={758--759},
+  year={2009}
+}
+
+@article{ragfusion2023,
+  title={{RAG-Fusion}: a New Take on Retrieval-Augmented Generation},
+  author={Raudaschl, Adrian},
+  journal={arXiv preprint arXiv:2402.03367},
+  year={2023},
+  note={Multi-query generation with reciprocal rank fusion for improved retrieval}
+}
+
+@article{colbertv2,
+  title={{ColBERTv2}: Effective and Efficient Retrieval via Lightweight Late Interaction},
+  author={Santhanam, Keshav and Khattab, Omar and Saad-Falcon, Jon and Potts, Christopher and Zaharia, Matei},
+  journal={arXiv preprint arXiv:2112.01488},
+  year={2022},
+  note={Late interaction: per-token embeddings with MaxSim for higher retrieval accuracy}
+}
+
+@article{matryoshka2022,
+  title={Matryoshka Representation Learning},
+  author={Kusupati, Aditya and Bhatt, Gantavya and Rege, Aniket and Wallingford, Matthew and Shlens, Jonathon and Jain, Prateek and Kakade, Sham and Farhadi, Ali},
+  journal={arXiv preprint arXiv:2205.13147},
+  year={2022},
+  note={Variable-dimension embeddings: coarse search with few dimensions, fine reranking with full dimensions}
+}
+
+% --- 2.1.2 Advanced RAG: Post-Retrieval Refinement ---
+
+@article{nogueira2019,
+  title={Passage Re-ranking with {BERT}},
+  author={Nogueira, Rodrigo and Cho, Kyunghyun},
+  journal={arXiv preprint arXiv:1901.04085},
+  year={2019},
+  note={Cross-encoder reranking: query-document joint encoding for accurate relevance scoring}
+}
+
+@article{llmlingua2023,
+  title={{LLMLingua}: Compressing Prompts for Accelerated Inference of Large Language Models},
+  author={Jiang, Huiqiang and Wu, Qianhui and Lin, Chin-Yew and Yang, Yuqing and Qiu, Lili},
+  journal={arXiv preprint arXiv:2310.05736},
+  year={2023},
+  note={Prompt compression via token pruning: removes low-information tokens to reduce cost and noise}
+}
+
+@article{lostmiddle2023,
+  title={Lost in the Middle: How Language Models Use Long Contexts},
+  author={Liu, Nelson F. and Lin, Kevin and Hewitt, John and Paranjape, Ashwin and Bevilacqua, Michele and Petroni, Fabio and Liang, Percy},
+  journal={arXiv preprint arXiv:2307.03172},
+  year={2023},
+  note={U-shaped attention: LLMs recall information better at beginning and end of context, degrading in the middle}
+}
+
+@article{hyde2023,
+  title={{HyDE}: Hypothetical Document Embeddings for Zero-Shot Dense Retrieval},
+  author={Gao, Luyu and Ma, Xueguang and Lin, Jimmy and Callan, Jamie},
+  journal={arXiv preprint arXiv:2212.10496},
+  year={2023},
+  note={Query expansion via hypothetical document generation}
+}
+
+@inproceedings{rabitq2024,
+  title={{RaBitQ}: Quantizing High-Dimensional Vectors with a Theoretical Error Bound for Approximate Nearest Neighbor Search},
+  author={Gao, Jianyang and Long, Cheng},
+  booktitle={Proceedings of the ACM SIGMOD International Conference on Management of Data},
+  year={2024},
+  note={Binary vector quantization with $O(1/\sqrt{D})$ error bound; 32$\times$ compression with sub-5\% recall loss}
+}
+
+@article{llmintrinsics2025,
+  title={A Library of {LLM} Intrinsics for Retrieval-Augmented Generation},
+  author={Danilevsky, Marina and Katsis, Yannis and Popa, Lucian and others},
+  journal={arXiv preprint arXiv:2504.11704},
+  year={2025},
+  note={IBM Research. Modular RAG components (reranking, hallucination detection, citation generation) as LoRA adapters}
+}
+
+@article{daao2025,
+  title={Difficulty-Aware Agent Orchestration in {LLM}-Powered Workflows},
+  author={Zhang, Yuxiang and others},
+  journal={arXiv preprint arXiv:2509.11079},
+  year={2025},
+  note={6x cost reduction through difficulty-aware routing}
+}
+
+@article{adaptiverag2024,
+  title={Adaptive-{RAG}: Learning to Adapt Retrieval-Augmented Large Language Models through Question Complexity},
+  author={Jeong, Soyeong and others},
+  journal={arXiv preprint arXiv:2403.14403},
+  year={2024},
+  note={Query routing based on complexity estimation}
+}
+
+% ============================================================================
+% Section 2.2 - Energy Consumption in ML Systems
+% ============================================================================
+
+@article{energyml2024,
+  title={The Carbon Footprint of Machine Learning Training Will Plateau, Then Shrink},
+  author={Patterson, David and others},
+  journal={IEEE Computer},
+  volume={57},
+  number={1},
+  pages={18--28},
+  year={2024},
+  note={Analysis of ML energy consumption trends and sustainability}
+}
+
+@article{cpucentric2025,
+  title={A {CPU}-Centric Perspective on Agentic {AI}},
+  author={Chen, Tianyi and others},
+  journal={arXiv preprint arXiv:2511.00739},
+  year={2025},
+  note={Key finding: CPU accounts for 90.6\% latency, 44\% energy in agentic RAG}
+}
+
+@article{trainingenergy2023,
+  title={Estimating the Carbon Footprint of {BLOOM}, a 176B Parameter Language Model},
+  author={Luccioni, Alexandra Sasha and Viguier, Sylvain and Ligozat, Anne-Laure},
+  journal={Journal of Machine Learning Research},
+  volume={24},
+  number={253},
+  pages={1--15},
+  year={2023}
+}
+
+@misc{melodi2025,
+  title={{MELODI}: Use Local Large Language Models for Energy-Efficient Inference},
+  author={Husom, Erik Johannes},
+  year={2025},
+  url={https://github.com/ejhusom/MELODI},
+  note={CPU/GPU power profiling framework for LLM inference}
+}
+
+@misc{apexplus2025,
+  title={{APEX+}: An {LLM} Serving Simulator},
+  author={Microsoft Research},
+  year={2025},
+  url={https://github.com/microsoft/apex_plus},
+  note={Energy-aware LLM serving simulation}
+}
+
+@article{inferencesurvey2025,
+  title={A Survey on Inference Engines for Large Language Models: Perspectives on Optimization and Efficiency},
+  author={Park, Hyungjun and Kim, Jiyeon and others},
+  journal={arXiv preprint arXiv:2505.01658},
+  year={2025},
+  note={Survey of 25 LLM inference engines covering batching, memory management, parallelism, and energy efficiency}
+}
+
+@article{raplenergy2025,
+  title={Strategies to Measure Energy Consumption Using {RAPL} During Workflow Execution on Commodity Clusters},
+  author={Thamm, Philipp and Leser, Ulf},
+  journal={arXiv preprint arXiv:2505.09375},
+  year={2025},
+  note={Systematic evaluation of RAPL measurement strategies in distributed Kubernetes clusters}
+}
+
+@article{awq2023,
+  title={{AWQ}: Activation-aware Weight Quantization for {LLM} Compression and Acceleration},
+  author={Lin, Ji and Tang, Jiaming and Tang, Haotian and Yang, Shang and Dang, Xingyu and Han, Song},
+  journal={arXiv preprint arXiv:2306.00978},
+  year={2023},
+  note={MIT Han Lab. 3.2x speedup with <1\% perplexity loss at 4-bit}
+}
+
+@mastersthesis{burghardt2025,
+  title={Optimizing {RAG}-Based Knowledge Management with Fine-Tuned Quantized {LLMs}: A Multi-Criteria Decision-Making Approach},
+  author={Burghardt, Robin Tom},
+  school={National Taiwan University of Science and Technology},
+  year={2025},
+  note={Supervised by Prof.\ Shuo-Yan Chou. Fine-tuned quantized LLaMA 3.2-3B matches 8B quality at 39\% less memory and 57\% less inference time}
+}
+
+@inproceedings{flashattn2022,
+  title={{FlashAttention}: Fast and Memory-Efficient Exact Attention with {IO}-Awareness},
+  author={Dao, Tri and Fu, Daniel Y and Ermon, Stefano and Rudra, Atri and R{\'e}, Christopher},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS)},
+  volume={35},
+  pages={16344--16359},
+  year={2022},
+  note={Up to 7x faster attention computation}
+}
+
+@article{specdec2023,
+  title={Fast Inference from Transformers via Speculative Decoding},
+  author={Leviathan, Yaniv and Kalman, Matan and Matias, Yossi},
+  journal={International Conference on Machine Learning (ICML)},
+  year={2023},
+  note={Google Research. 2-3x generation speedup without quality loss}
+}
+
+@article{kvcache2023,
+  title={{H2O}: Heavy-Hitter Oracle for Efficient Generative Inference of Large Language Models},
+  author={Zhang, Zhenyu and others},
+  journal={arXiv preprint arXiv:2306.14048},
+  year={2023},
+  note={KV cache compression with up to 80\% memory reduction}
+}
+
+% ============================================================================
+% Section 2.3 - Adaptive Systems
+% ============================================================================
+
+@inproceedings{branchynet2016,
+  title={{BranchyNet}: Fast Inference via Early Exiting from Deep Neural Networks},
+  author={Teerapittayanon, Surat and McDanel, Bradley and Kung, Hsiang-Tsung},
+  booktitle={International Conference on Pattern Recognition (ICPR)},
+  pages={2464--2469},
+  year={2016},
+  organization={IEEE},
+  note={Early exiting for convolutional networks}
+}
+
+@inproceedings{deebert2020,
+  title={{DeeBERT}: Dynamic Early Exiting for Accelerating {BERT} Inference},
+  author={Xin, Ji and Tang, Raphael and Lee, Jaejun and Yu, Yaoliang and Lin, Jimmy},
+  booktitle={Annual Meeting of the Association for Computational Linguistics (ACL)},
+  pages={2246--2251},
+  year={2020},
+  note={Early exiting applied to BERT models}
+}
+
+@article{frugalgpt2023,
+  title={{FrugalGPT}: How to Use Large Language Models While Reducing Cost and Improving Performance},
+  author={Chen, Lingjiao and Zaharia, Matei and Zou, James},
+  journal={arXiv preprint arXiv:2305.05176},
+  year={2023},
+  note={Up to 98\% cost reduction via LLM cascades}
+}
+
+@article{uncertaintyrouting2025,
+  title={Leveraging Uncertainty Estimation for Efficient {LLM} Routing},
+  author={Zhang, Tuo and Mehradfar, Asal and Dimitriadis, Dimitrios and Avestimehr, Salman},
+  journal={arXiv preprint arXiv:2502.11021},
+  year={2025},
+  note={USC/Amazon AI. Semantic entropy-based confidence routing; outperforms RouteLLM by 4--8\% on RouterBench}
+}
+
+@inproceedings{ragrouter2025,
+  title={{RAGRouter}: Learning to Route Queries to Multiple Retrieval-Augmented Language Models},
+  author={Zhang, Tianyu and others},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS)},
+  year={2025},
+  note={Document-aware LLM routing via contrastive learning; 3.29\% gain over static routing}
+}
+
+@article{uniroute2025,
+  title={{UniRoute}: Training-Free Universal Model Routing for Efficient {LLM} Inference},
+  author={Jitkrittum, Wittawat and others},
+  journal={arXiv preprint arXiv:2502.08773},
+  year={2025},
+  note={Google. Cluster-based routing with zero-shot generalization to unseen LLMs}
+}
+
+@inproceedings{unifiedrouting2025,
+  title={A Unified Approach to Routing and Cascading for {LLMs}},
+  author={Dekoninck, Jasper and Baader, Maximilian and Vechev, Martin},
+  booktitle={Proceedings of the 42nd International Conference on Machine Learning (ICML)},
+  year={2025},
+  note={ETH Zurich. Formalizes model selection as linear optimization; cascade policies dominate threshold cascading}
+}
+
+% ============================================================================
+% Additional References (from research collection)
+% ============================================================================
+
+@article{agenticragsurvey2025,
+  title={Agentic Retrieval-Augmented Generation: A Survey on Agentic {RAG}},
+  author={Singh, Aditi and others},
+  journal={arXiv preprint arXiv:2501.09136},
+  year={2025},
+  note={Comprehensive taxonomy of agentic vs traditional RAG}
+}
+
+@article{gptq2022,
+  title={{GPTQ}: Accurate Post-Training Quantization for Generative Pre-trained Transformers},
+  author={Frantar, Elias and Ashkboos, Saleh and Hoefler, Torsten and Alistarh, Dan},
+  journal={arXiv preprint arXiv:2210.17323},
+  year={2022},
+  note={4-bit quantization baseline for LLMs}
+}
+
+@article{moe2022,
+  title={Switch Transformers: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity},
+  author={Fedus, William and Zoph, Barret and Shazeer, Noam},
+  journal={Journal of Machine Learning Research},
+  volume={23},
+  number={120},
+  pages={1--39},
+  year={2022},
+  note={Mixture-of-Experts architecture for sparse activation}
+}
+
+% ============================================================================
+% Section 4.3 - Dataset
+% ============================================================================
+
+@inproceedings{kilt2021,
+  title={{KILT}: a Benchmark for Knowledge Intensive Language Tasks},
+  author={Petroni, Fabio and Piktus, Aleksandra and Fan, Angela and Lewis, Patrick and Yaber, Majid and De Cao, Nicola and Jernite, Yacine and Saeidi, Marzieh and Thorne, James and Stoyanov, Veselin and Riedel, Sebastian},
+  booktitle={Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies},
+  pages={2523--2544},
+  year={2021},
+  note={Benchmark providing queries, reference answers, and gold provenance for knowledge-intensive NLP}
+}
+
+@article{hybridrag2024,
+  title={A Survey on Retrieval-Augmented Generation},
+  author={Gao, Yunfan and Xiong, Yun and others},
+  journal={arXiv preprint arXiv:2312.10997},
+  year={2024},
+  note={Comprehensive survey covering hybrid dense-sparse retrieval strategies}
+}
+
+@inproceedings{hotpotqa2018,
+  title={{HotpotQA}: A Dataset for Diverse, Explainable Multi-hop Question Answering},
+  author={Yang, Zhilin and Qi, Peng and Zhang, Saizheng and Bengio, Yoshua and Cohen, William W. and Salakhutdinov, Ruslan and Manning, Christopher D.},
+  booktitle={Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  pages={2369--2380},
+  year={2018},
+  note={113k Wikipedia-based QA pairs requiring multi-hop reasoning across two or more documents}
+}
+
+@inproceedings{beamretrieval2024,
+  title={End-to-End Beam Retrieval for Multi-Hop Question Answering},
+  author={Zhang, Jiahao and Zhang, Haiyang and Zhang, Dongmei and Liu, Yong and Huang, Shen},
+  booktitle={Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics (NAACL)},
+  year={2024},
+  note={State-of-the-art on HotpotQA distractor setting (Aug 2023 submission). arXiv:2308.08973}
+}
+
+% ============================================================================
+% Section 4.3 - Quality Evaluation
+% ============================================================================
+
+@inproceedings{ragas2023,
+  title={{RAGAs}: Automated Evaluation of Retrieval Augmented Generation},
+  author={Es, Shahul and James, Jithin and Espinosa-Anke, Luis and Schockaert, Steven},
+  booktitle={Proceedings of the 18th Conference of the European Chapter of the Association for Computational Linguistics: System Demonstrations},
+  pages={150--158},
+  year={2024},
+  address={St. Julians, Malta},
+  publisher={Association for Computational Linguistics},
+  note={Framework for automated RAG evaluation using faithfulness, context precision/recall, and factual correctness}
+}
+
+@article{vrageval2024,
+  title={{vRAG-Eval}: A Strong {LLM} Is All You Need for Evaluating {RAG} Answer Quality},
+  author={Wang, Tianyu and Liu, Liangdi and Wang, Runhan and Lin, Jingyuan and Geng, Hanzhang and Chen, Yuqian and Zhang, Guochang},
+  journal={arXiv preprint arXiv:2406.18064},
+  year={2024},
+  note={Visa Inc. LLM-as-judge for RAG; GPT-4 achieves 82.6\% agreement with human annotations}
+}
+
+% ============================================================================
+% Section 1 - Introduction (Usage Statistics)
+% ============================================================================
+
+@techreport{chatgptusage2025,
+  title={How People Use {ChatGPT}},
+  author={Chatterji, Aaron and Cunningham, Thomas and Deming, David J. and Hitzig, Zoe and Ong, Christopher and Shan, Carl Yan and Wadman, Kevin},
+  institution={National Bureau of Economic Research},
+  type={Working Paper},
+  number={34255},
+  year={2025},
+  doi={10.3386/w34255},
+  note={OpenAI/Harvard study: users aged 18--25 account for 46\% of messages}
+}
+
+@misc{inferenceshift2025,
+  title={{AI} Industry Shift: From Training-Centric to Inference-Centric Phase},
+  author={wps},
+  year={2025},
+  url={https://medium.com/@dayu7806/ai-industry-shift-from-training-centric-to-inference-centric-phase-75d3cc1ac175},
+  note={Medium article on the industry transition from training to inference workloads}
+}
+
+@misc{morganstanleyinference2025,
+  title={{AI} Enters a New Phase of Inference},
+  author={{Morgan Stanley}},
+  year={2025},
+  url={https://www.morganstanley.com.au/ideas/ai-enters-a-new-phase-of-inference},
+  note={Industry analysis: inference phase represents a larger opportunity than training; 6x data centre capacity growth needed by 2035}
+}
+
+% ============================================================================
+% Section 2.2 / 4 - Energy in RAG Systems
+% ============================================================================
+
+@inproceedings{keplerenergy2026,
+  title={On the Effectiveness of Proposed Techniques to Reduce Energy Consumption in {RAG} Systems: A Controlled Experiment},
+  author={Guo, Zhinuan and Gao, Chushu and Bogner, Justus},
+  booktitle={Proceedings of the 47th International Conference on Software Engineering: Software Engineering in Society (ICSE-SEIS)},
+  year={2026},
+  doi={10.1145/3786581.3786932},
+  note={Controlled experiment on RAG energy reduction techniques using Kepler for measurement}
+}
+
+% ============================================================================
+% Section 2.3 - Adaptive RAG (Self-RAG, CRAG)
+% ============================================================================
+
+@article{selfrag2024,
+  title={Self-{RAG}: Learning to Retrieve, Generate, and Critique through Self-Reflection},
+  author={Asai, Akari and Wu, Zeqiu and Wang, Yizhong and Sil, Avirup and Hajishirzi, Hannaneh},
+  journal={arXiv preprint arXiv:2310.11511},
+  year={2024},
+  note={Reflection tokens for on-demand retrieval and self-critique during generation}
+}
+
+@article{crag2024,
+  title={Corrective Retrieval Augmented Generation},
+  author={Yan, Shi-Qi and Gu, Jia-Chen and Zhu, Yun and Ling, Zhen-Hua},
+  journal={arXiv preprint arXiv:2401.15884},
+  year={2024},
+  note={Lightweight evaluator triggers corrective retrieval or web search when initial retrieval confidence is low}
+}
+
+% ============================================================================
+% Section 6-7 - Router Design and ML Models
+% ============================================================================
+
+@inproceedings{routellm2025,
+  title={{RouteLLM}: Learning to Route {LLMs} with Preference Data},
+  author={Ong, Isaac and Almahairi, Amjad and Wu, Vincent and Chiang, Wei-Lin and Wu, Tianhao and Gonzalez, Joseph E. and Kadous, M Waleed and Stoica, Ion},
+  booktitle={The Thirteenth International Conference on Learning Representations (ICLR)},
+  year={2025},
+  note={Cost-quality routing using Bradley-Terry preference model and matrix factorization}
+}
+
+@article{routerbench2024,
+  title={{RouterBench}: A Benchmark for Multi-{LLM} Routing System},
+  author={Hu, Qitian Jason and Bieker, Jacob and Li, Xiuyu and Jiang, Nan and Keigwin, Benjamin and Ranganath, Gaurav and Keutzer, Kurt and Upadhyay, Shriyash Kaustubh},
+  journal={arXiv preprint arXiv:2403.12031},
+  year={2024},
+  note={Benchmark with 405k+ inference outcomes for evaluating LLM routing strategies}
+}
+
+@misc{openaidataagent2026,
+  title={Inside {OpenAI}'s In-House Data Agent},
+  author={{OpenAI}},
+  year={2026},
+  url={https://openai.com/index/inside-our-in-house-data-agent/},
+  note={Internal data agent powered by GPT-5.2 serving 3.5k+ users across 600\,PB of data}
+}
+
+@article{ragquality2025,
+  title={Quality Analysis and Evaluation Prediction of {RAG} Retrieval Based on Machine Learning Algorithms},
+  author={Zhang, Ruoxin and Wen, Zhizhao and Wang, Chao and Tang, Chenchen and Xu, Puyang and Jiang, Yifan},
+  journal={arXiv preprint arXiv:2511.19481},
+  year={2025},
+  note={XGBoost-based retrieval quality prediction for RAG systems}
+}
+
+@article{ragevalsurvey2025,
+  title={Retrieval Augmented Generation Evaluation in the Era of Large Language Models: A Comprehensive Survey},
+  author={Gan, Jiawei and Qi, Jian and Li, Xinrun and Chen, Yifan and Li, Zhiyong},
+  journal={arXiv preprint arXiv:2502.13759},
+  year={2025},
+  note={582-paper survey: taxonomy of RAG evaluation across retrieval, generation, safety and efficiency}
+}
+

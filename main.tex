@@ -1,0 +1,139 @@
+% !TEX program = pdflatex
+\documentclass[a4paper,11pt]{article}
+
+% --- Encoding ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+
+% --- Math ---
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathrsfs}
+\usepackage{bm}
+\usepackage{mathtools}
+
+% --- Layout ---
+\usepackage[a4paper, margin=1.05in, vmargin=3cm]{geometry}
+\usepackage[colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=blue, plainpages=false]{hyperref}
+\usepackage{etoolbox}
+
+% --- Typography ---
+\usepackage{titlesec}
+\usepackage{xcolor}
+% \titlespacing*{\section}{0pt}{3.5ex plus 1ex minus .2ex}{0.5ex plus .2ex}
+% \titlespacing*{\subsection}{0pt}{3.25ex plus 1ex minus .2ex}{0.5ex plus .2ex}
+\titlespacing*{\paragraph}{0pt}{1.0ex plus 0.3ex minus .1ex}{1em}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.9em}
+
+% --- Figures and Tables ---
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{multicol}
+\usepackage{enumerate}
+\usepackage{enumitem}
+\setlist{topsep=0em, itemsep=0.4em, parsep=0pt}
+\usepackage{subcaption}
+\usepackage{multirow}
+\usepackage[export]{adjustbox}
+\graphicspath{{img/}}
+
+% --- Diagrams ---
+\usepackage{tikz}
+\usetikzlibrary{positioning, fit, backgrounds}
+\usepackage{changepage}
+
+% --- Code Listings ---
+\usepackage{listings}
+\lstset{
+    breaklines=true,
+    postbreak=\raisebox{0ex}[0ex][0ex]{\ensuremath{\hookrightarrow\space}},
+    frame=false,
+    numbers=left,
+    numberstyle=\tiny,
+    basicstyle=\ttfamily\small,
+    captionpos=b,
+}
+
+% --- Temporary: comment out unfinished sections for print ---
+\usepackage{comment}
+
+% --- Draft Header ---
+% \usepackage{fancyhdr}
+% \pagestyle{fancy}
+% \fancyhf{}
+% \fancyhead[L]{\textcolor{red}{\textbf{DRAFT -- \today}}}
+% \fancyfoot[C]{\thepage}
+% \renewcommand{\headrulewidth}{0pt}
+
+%----------------------------------------------------------------------------------------
+% Thesis metadata
+%----------------------------------------------------------------------------------------
+\def\ttype{Master Thesis}
+\def\ttitle{Dynamic RAG under Energy Constraints: Characterizing the Structural Limits of Module-Level Routing}
+\def\tcontext{Evaluating Pre-Execution Query Signals for Inference Cost Optimization}
+\def\tdate{\today}
+
+\def\authorname{Rui Vieira}
+\def\authorinstitute{Institute of Product Development and Production Technologies (IPP)}
+\def\degreename{Master of Science in Engineering}
+\def\studyprog{Business Engineering, MSc in Engineering}
+\def\studyproglink{https://www.msengineering.ch/profiles/engineering-and-it/business-engineering}
+
+\def\supnameA{Dr. Stefan Czerner}
+\def\supmailA{stefan.czerner@zhaw.ch}
+\def\supinstituteA{IPP Institute of Product Development and Production Technologies}
+\def\supinfoA{%
+    \supnameA\\
+    \supinstituteA\\
+    Zurich University of Applied Sciences, School of Engineering\\
+    \href{mailto:\supmailA}{\supmailA}
+}
+\def\supnameB{Distinguished Prof. Shuo-Yan Chou}
+\def\supmailB{sychou@mail.ntust.edu.tw}
+\def\supinfoB{%
+    \supnameB\\
+    Center for IoT-Innovation\\
+    Department of Industrial Management, National Taiwan University of Science and Technology\\
+    \href{mailto:\supmailB}{\supmailB}
+}
+
+\def\univname{Zurich University of Applied Sciences, School of Engineering}
+\def\univlink{https://www.zhaw.ch/en/engineering/}
+
+%----------------------------------------------------------------------------------------
+\begin{document}
+
+% Front matter (title, committee, abstract, acknowledgments, TOC, lists)
+\input{frontpgs}
+
+% Main content
+\input{sections/1-intro}
+\input{sections/2-sota}
+\input{sections/3-system}
+\input{sections/4-measure}
+\input{sections/5-energy}
+\input{sections/6-router}
+\input{sections/7-models}
+\input{sections/8-discussion}
+\input{sections/9-conclusion}
+
+% Appendix
+\input{sections/10-appendix}
+
+% References
+\newpage
+\addcontentsline{toc}{section}{References}
+\bibliographystyle{plain-nonote}
+\bibliography{sections/refs.bib}
+
+% Declaration of AI Tool Usage
+\vspace{2cm}
+\noindent\textbf{Declaration}
+Large language model assistants (Claude, Deepl and Google) were used during the
+preparation of this thesis for text translation and writing assistance
+as linguistic refinement, including grammar correction, 
+sentence rephrasing.  All research questions,
+experimental designs, analyses and conclusions are the original work of
+the author.
+
+\end{document}

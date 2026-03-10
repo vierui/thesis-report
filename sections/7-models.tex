@@ -1,0 +1,517 @@
+\newpage
+\section{Routing Strategies}
+\label{sec:strategies}
+
+% Chapter purpose: Systematic investigation revealing a structural ceiling for
+% pre-execution routing on the no-HyDE config space {C0, C2, C3, C6}.
+% Narrative: survey (S1–S5, nothing beats C0) → explorations (E1–E3) →
+% ceiling analysis (the contribution).
+% Data: hotpot/7-routing/ (exploratory), hotpot/8-routing/ (controlled).
+
+
+\subsection{Experimental Setup}
+\label{subsec:routing-setup}
+
+Previously we formulated the routing decision, constructed
+oracle label  and assessed the pre-execution signal.  Now, we
+evaluate whether learned routing strategies can exploit that signal
+beyond a static baseline. The objective remains:
+%
+\begin{quote}
+Given a query~$q$ with pre-execution features
+$\mathbf{x} \in \mathbb{R}^d$, select the configuration
+$\hat{c}(q) \in \mathcal{C} = \{\text{C0, C2, C3, C6}\}$
+that minimises energy while satisfying the quality floor.
+\end{quote}
+%
+This uses no information produced by the pipeline itself. The 
+configuration space $\mathcal{C}$ is reduced to non-HyDE configurations.
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.85\textwidth]{router.png}
+\caption{Router flow illustration}
+\label{fig:router-flow}
+\end{figure}
+
+\paragraph{Evaluation protocol.}
+Let $\mathcal{D} = \{(\mathbf{x}_i, y_i)\}_{i=1}^{N}$ denote the routing
+dataset, where $\mathbf{x}_i \in \mathbb{R}^{d}$ is the pre-execution
+feature vector and $y_i = \ell(q_i) \in \mathcal{C}$ the oracle label
+for query~$i$. Features are query-only meaning that every configuration
+sees the same~$\mathbf{x}_i$. The label is config-dependent because $\ell(q)$ 
+selects the cheapest configuration that satisfies the quality floor:
+encoding both energy and quality information in a single target.
+
+The base dataset contains $N = 1{'}200$ queries
+with $d = 23$ features; individual experiments vary~$d$ as noted.
+All models are evaluated under 5-fold stratified cross-validation,
+stratified on~$y_i$ to preserve class proportions,
+with 80/20\% train-test splits. Five metrics measure success:
+
+\begin{itemize}
+    \item \textbf{Config accuracy}: the fraction of queries routed to the oracle-optimal configuration. Primary metric.
+          $$\text{acc} = \frac{1}{N} \sum_{i=1}^{N}
+          \mathbb{1}[\hat{y}_i = y_i]$$
+    \item \textbf{Config F1 macro}: the macro-averaged F1 across configuration classes.  Penalises
+          models that ignore minority classes.
+          $$\text{F1}_{\text{macro}} = \frac{1}{|\mathcal{C}|}
+          \sum_{c \in \mathcal{C}} \text{F1}_c$$
+    \item \textbf{Pass rate}: the fraction of queries whose routed configuration produces an
+          acceptable response ($a = 1$).  Pass rate inflates apparent
+          performance because multiple configurations satisfy the same query.
+          $$\text{pass} = \frac{1}{N} \sum_{i=1}^{N}a(q_i, \hat{y}_i)$$
+    \item \textbf{Mean energy/token}: the average energy/token per query under the routed policy.
+          $$\bar{E} = \frac{1}{N} \sum_{i=1}^{N} E(q_i, \hat{y}_i)$$
+    \item \textbf{Mean ROC AUC} measures a model's average ability to distinguish
+    between classes across multiple folds. 
+\end{itemize}
+
+\paragraph{Baselines.}
+The simplest reference is a \emph{configuration baseline}: apply the same
+configuration to every query without any routing.
+%$ \hat{c}(q) = c_j,\; \forall q$.
+There are four such baselines, one per configuration in~$\mathcal{C}$.
+The \emph{oracle} which assigns each query to its most energy-efficient configuration,
+$\hat{c}(q) = y_i$. The table below reports the
+results.  Among them, C0 achieves the highest accuracy
+(0.382) because C0 is the most frequent oracle label.  Any learned router
+must exceed this threshold to justify its complexity.
+Figure~\ref{fig:baseline-energy} illustrates the energy cost between the baselines.
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{l r r r r r}
+\hline
+\textbf{Baseline} & \textbf{Accuracy} & \textbf{F1 macro}  & \textbf{Pass rate} & \textbf{Energy (J)} \\
+\hline
+Oracle  & 1.000 & 1.000   & 0.555 & 341 \\
+C0      & 0.382 & 0.138   & 0.318 & 318 \\
+C3      & 0.318 & 0.121   & 0.323 & 324 \\
+C2      & 0.153 & 0.066   & 0.363 & 424 \\
+C6      & 0.148 & 0.064   & 0.362 & 435 \\
+\hline
+\end{tabular}
+\caption{Configuration baselines and oracle.}
+\label{tab:baselines}
+\end{table}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.7\textwidth]{fig_baseline_energy.pdf}
+\caption{Mean energy per query across configuration baselines.}
+\label{fig:baseline-energy}
+\end{figure}
+
+\paragraph{Investigation design.}
+The investigation proceeds in two phases:
+\begin{enumerate}
+    \item \textbf{Strategy survey}
+          (Section~\ref{subsec:strategy-survey})
+          Five ML framings of the routing task---multiclass
+          classification, binary decomposition, pairwise
+          preference, selective abstention and utility scoring---are
+          evaluated using the same 23~pre-execution features and
+          tree-based classifiers.
+    \item \textbf{Explorations}
+          (Section~\ref{subsec:explorations})
+          We fix the best formulation (utility scoring) and probe
+          three dimensions: feature selection~(E1), quality-metric
+          definition~(E2) and test-architecture~(E3).
+\end{enumerate}
+
+Together, the two phases test whether the performance ceiling is signal-limited or model-limited.
+
+% The controlled study spans four dimensions:
+% \begin{itemize}
+%       \item 3 feature sets (10~top-importance, 23~handcrafted, 23~+~5~C0 retrieval statistics)
+%       \item 2 label definitions (fc~+~faithfulness; fc~+~faithfulness~+~sup\_f1)
+%       \item 3 model families (tree-based classifiers, MLP with energy-aware loss (Neural network), two-stage cascade)
+%       \item 2 decision architectures (flat two-model with independent hybrid and reranking heads 
+%       vs.\ two-stage cascade where Stage~1 predicts search type, executes retrieval and 
+%       Stage~2 predicts reranking from the retrieved results).
+% \end{itemize}
+
+
+
+\subsection{Strategy Survey}
+\label{subsec:strategy-survey}
+
+We tested five routing formulations
+(S1--S5) to find which prediction target can selectively assign
+expensive configurations when they help, rather than defaulting to
+the cheapest option for every query. All five use the same 23~pre-execution features,
+the same evaluation protocol and tree-based classifiers where
+applicable. 
+% The table below summarises results whereas 
+% the paragraphs below trace the logical progression.
+
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{c l l l r}
+\hline
+\textbf{ID} & \textbf{Strategy} & \textbf{Prediction target} & \textbf{Model} & \textbf{Acc} \\
+\hline
+S1 & Multiclass          & Oracle label (4-class)        & LR / RF / XGB          & 0.297 \\
+S2 & Binary decomp.      & Hybrid? + Rerank? (indep.)    & RF (two heads)         & 0.298 \\
+S3 & Pairwise pref.      & Config~A $>$ B? (6 pairs)     & RF + voting            & 0.331 \\
+S4 & Selective abstention & Oracle label + confidence     & RF + threshold         & ---   \\
+S5 & Utility scoring     & $\hat{P}$(pass $\mid$ q, c)   & RF (per-config) + $\lambda$ & 0.395 \\
+\hline
+\end{tabular}
+\caption{Strategy survey results.}
+\label{tab:strategy-survey}
+\end{table}
+
+\paragraph{S1: Direct multiclass classification.}
+The most direct and naïve approach predicts the configuration label among
+\{C0, C2, C3, C6\} using logistic regression, random forest and
+XGBoost.  The best classifier (XGBoost) reaches the poor config accuracy of
+0.297.
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.55\textwidth]{fig_cm_s1_multiclass.pdf}
+\caption{S1 confusion matrix (XGBoost, best classifier).}
+\label{fig:cm-s1}
+\end{figure}
+
+\paragraph{S2: Binary decomposition.}
+To reduce class imbalance, we decompose the 4-class problem into two
+independent binary heads: ``needs hybrid search?'' and ``needs
+reranking?''  Two random-forest classifiers predict each decision
+separately; their outputs combine into a configuration.  Best accuracy
+reaches 0.298. The individual heads are too
+weak to improve over majority-class prediction and the selection
+mechanism has no notion of energy cost
+(Figure~\ref{fig:cm-s2}).
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.75\textwidth]{fig_cm_s2_binary.pdf}
+\caption{S2 confusion matrices for the hybrid and reranking binary heads (RF).}
+\label{fig:cm-s2}
+\end{figure}
+
+\paragraph{S3: Pairwise preference.}
+Instead of predicting a single label, we train six pairwise classifiers
+(one per configuration pair) and aggregate via Borda voting.  Best
+accuracy reaches 0.331.  When individual pairs cannot reliably
+distinguish configurations with 2--3~pp quality differences, voting
+amplifies noise rather than signal
+(Figure~\ref{fig:cm-s3}).
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.85\textwidth]{fig_cm_s3_pairwise.pdf}
+\caption{S3 pairwise preference confusion matrices (RF).}
+\label{fig:cm-s3}
+\end{figure}
+
+\paragraph{S4: Selective abstention.}
+We add a confidence threshold: route only when the classifier's
+predicted probability exceeds a minimum, otherwise fall back to the
+cheapest configuration.  At every threshold that maintains meaningful
+routing coverage, 68--90\% of queries fall back to the default.
+The classifier is rarely confident because the underlying signal is
+weak, making abstention impractical
+(Figure~\ref{fig:s4-abstention}).
+
+% \begin{figure}[h!]
+% \centering
+% \includegraphics[width=0.6\textwidth]{fig_s4_abstention_curve.pdf}
+% \caption{S4 abstention rate vs config accuracy ($\lambda = 0.75$, fallback C0).}
+% \label{fig:s4-abstention}
+% \end{figure}
+
+\subsection{Utility Scoring}
+\label{subsec:utility-scoring}
+
+The four previous strategies share two failure modes: direct label
+prediction is trapped by class imbalance, and no approach accounts
+for energy cost during selection.  Utility scoring addresses both.
+Instead of predicting the oracle label, we train a binary classifier
+\emph{per configuration} that estimates $\hat{P}(\text{pass} \mid q, c)$
+---the probability that query~$q$ produces an acceptable response under
+configuration~$c$.  Two separate classifiers predict the search-type and
+reranking decisions independently.  Configuration selection uses:
+%
+\begin{equation}
+c^*(q) = \arg\max_{c \in \mathcal{C}} \;\;
+    \hat{P}(\text{pass} \mid q, c) \;-\; \lambda \cdot
+    \widetilde{E}(c)
+\label{eq:utility}
+\end{equation}
+%
+where $\widetilde{E}(c)$ is the min-max normalised energy cost of
+configuration~$c$ and $\lambda$ controls the energy--quality trade-off.
+Ties are broken in favour of the cheaper configuration.  This framework
+decouples quality estimation from configuration selection: the classifiers
+learn pass probabilities without knowing the energy landscape, while
+the utility function injects energy awareness at inference time.
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.55\textwidth]{fig_cm_s5_utility.pdf}
+\caption{S5 confusion matrix (RF, $\lambda = 0.75$).}
+\label{fig:cm-s5}
+\end{figure}
+
+\paragraph{Survey outcome.}
+Utility scoring is the only formulation that avoids the majority-class
+trap and introduces energy awareness.  At $\lambda = 1.50$, it exceeds
+Static~C0 for the first time, on a minimal note though
+(0.395 in the explorations below).  We also tested single-head MLPs
+with an energy-aware loss ($\mathcal{L} = \text{BCE} + \alpha \cdot
+\delta \cdot \text{sigmoid}(\text{logit})$), but 2{'}000~training
+samples proved insufficient: the best variant reached 0.383, matching
+the tree baselines without improving on~S5.
+
+Table~\ref{tab:all-strategies} consolidates the best policy from each
+strategy alongside the baselines.  All approaches cluster in a narrow
+band: config accuracy does not exceed 40\%.
+
+\begin{table}[h!]
+\centering
+\small
+\begin{tabular}{l l r r r r}
+\hline
+\textbf{Strategy} & \textbf{Best policy} & \textbf{Acc} & \textbf{F1 macro} & \textbf{Pass rate} & \textbf{Energy (J)} \\
+\hline
+Oracle                 & ---                      & 1.000 & 1.000 & 0.555 & 341 \\
+\hline
+S5: Utility scoring    & RF $\lambda$=1.50        & 0.395 & 0.189 & 0.328 & 318 \\
+MLP (energy loss)      & MLP $\lambda$=1.50       & 0.383 & 0.165 & 0.318 & 317 \\
+\hline
+Static C0              & ---                      & 0.382 & 0.138 & 0.318 & 318 \\
+\hline
+S3: Pairwise pref.     & RF + voting              & 0.331 & 0.149 & 0.323 & 335 \\
+S2: Binary decomp.     & RF (two heads)           & 0.298 & 0.103 & 0.316 & 361 \\
+S1: Multiclass         & XGB                      & 0.297 & 0.131 & 0.325 & 340 \\
+\hline
+\end{tabular}
+\caption{Consolidated strategy results (best policy per approach).}
+\label{tab:all-strategies}
+\end{table}
+
+\paragraph{Lambda dominance.}
+Across all experiments, the best results appear at $\lambda = 1.25$--$1.50$.
+Without the energy penalty ($\lambda = 0$), config accuracy drops to
+0.28--0.35 as models route queries to expensive configurations.
+The energy weight $\lambda$ is more impactful than the choice of
+classifier or formulation.  High~$\lambda$ enforces cheap defaults
+unless the quality signal is strong, which amounts to a soft version
+of Static~C0.  Figure~\ref{fig:lambda-sweep} shows the monotonic
+relationship: all three classifiers start 8--10~pp below Static~C0 at
+$\lambda = 0$ and converge toward it as $\lambda$ increases.  Only RF
+at $\lambda \geq 1.25$ crosses the baseline.
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.7\textwidth]{fig_lambda_sweep.pdf}
+\caption{Config accuracy versus energy penalty $\lambda$}
+\label{fig:lambda-sweep}
+\end{figure}
+
+\subsection{Routing Explorations}
+\label{subsec:explorations}
+
+Given that utility scoring is the most promising formulation that exceeds
+Static~C0, we explored some of its boundaries.  Three experiments probe
+different dimensions of the approach: which features carry routing
+signal~(E1), which quality-metric definition produces learnable
+labels~(E2) and whether a two-stage architecture can access
+post-retrieval information~(E3).
+
+
+\subsubsection{Feature Selection (E1)}
+\label{subsubsec:feature-importance}
+
+We select the ten features with the highest importance scores from a
+preliminary correlation analysis and compare per-model performance
+against full 23-feature set.  The goal is to determine whether
+the routing signal is concentrated or distributed.
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.6\textwidth]{fig_e1_feature_importance.pdf}
+\caption{Top-10 feature importance scores.}
+\label{fig:e1-importance}
+\end{figure}
+
+It turns out that the top four are: presence of a logical operator,
+embedding similarity gap between the two nearest semantic clusters,
+content-word ratio and multi-entity flag.
+Structural query properties and embedding-derived difficulty signals
+carry the most routing-relevant information for the HotPotQA dataset.
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.55\textwidth]{fig_e1_feature_comparison.pdf}
+\caption{Config accuracy: 10 vs 23 features per model.}
+\label{fig:e1-comparison}
+\end{figure}
+
+This result is expected but requires empirical verification; the response to feature reduction is model-dependent.
+LogReg benefits from noise reduction. RF shows the opposite pattern,
+despite ``improving'' from 0.382 to 0.395 with the full
+set. XGB is indifferent by default.
+The low discriminative power of the
+10 features confirms that routing signal
+is not limited by noise from the remaining features but
+by the features' weak prediction capability. Their mean correlation with the oracle label remains below 0.4.
+
+
+\subsubsection{Metric Sensitivity (E2)}
+\label{subsubsec:metric-selection}
+
+The oracle labels depend on which quality metrics define ``pass'' and
+at what threshold.  We train a router (RF, 23~features, $\lambda$~sweep)
+under each of the seven non-empty subsets of \{fc, faithfulness,
+Sup~F1\}, sweeping $\tau \in \{0.5, 0.6, 0.7, 0.8, 0.9\}$.
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.85\textwidth]{fig_metric_selection.pdf}
+\caption{Config accuracy vs $\tau$ per metric subset}
+\label{fig:metric-selection}
+\end{figure}
+
+Three regimes emerge in Figure~\ref{fig:metric-selection}:  
+\begin{itemize}
+      \item At low $\tau$ the oracle is C0-dominated and the router trails its own C0 baseline by 1--2~pp. 
+      \item Any combination containing Sup~F1 collapses at $\tau \geq 0.6$ (mean Sup~F1 = 0.545, below threshold).
+      \item The fc~+~faith combination occupies a middle regime: at $\tau = 0.7$ the pass rate is 56\% and the
+      label distribution is most balanced (C0~38\%, C3~32\%, C2/C6~15\%),
+      producing the largest positive margin in the sweep: 0.395 vs
+      Static~C0 0.382 (+1.3~pp).  
+      \item At stricter thresholds the margin vanishes.
+\end{itemize}   
+
+Label learnability depends on the pass-rate regime: too lenient or too
+strict both collapse routing to the static baseline.  Noisy quality
+metrics (Chapter~\ref{sec:labeling}) further limit the signal any
+classifier can exploit (Section~\ref{subsec:ceiling}).
+
+
+\subsubsection{Cascade Architecture (E3)}
+\label{subsubsec:cascade}
+
+All previous strategies commit to the full configuration before
+any pipeline component executes.  E3 tests whether deferring the
+reranking decision to \emph{midway}---after retrieval---unlocks
+additional signal.  Stage~1 predicts search type from query
+features (identical to S5); the system executes retrieval; Stage~2
+observes five retrieval-quality statistics and decides whether
+reranking is needed.  Two variants are tested: V1 uses retrieval
+features only (5), V2 adds the 23~query features (28 total).
+
+V1 achieves 0.394 and V2 achieves 0.397---only 0.2~pp above S5.
+The Stage~2 reranking classifier reaches AUC~0.53 with retrieval
+features alone, barely above random.
+Figure~\ref{fig:e7-importance} confirms: three of five retrieval
+features rank in the top~10 by RF importance, yet importances are
+nearly uniform---a pattern typical of low-signal classification.
+The midway signal describes retrieval confidence, not reranking
+benefit.
+
+\begin{figure}[h!]
+\centering
+\includegraphics[width=0.6\textwidth]{fig_e7_feature_importance.pdf}
+\caption{E3 Stage~2 feature importance}
+\label{fig:e7-importance}
+\end{figure}
+
+
+\subsection{The Structural Ceiling}
+\label{subsec:ceiling}
+
+The convergence of all approaches to the 0.38--0.40 range is itself a
+finding.  Five strategies and three explorations spanning tree-based
+classifiers, neural networks and a two-stage cascade all reach the
+same region.
+The between-experiment spread is 2~pp (0.377--0.397), comparable to the
+within-experiment cross-validation standard deviation of 1--2~pp.
+Experiment-to-experiment variation is indistinguishable from fold-to-fold
+noise.  A McNemar test on the 1{'}200 query-level predictions confirms
+this: the difference between S5~RF (0.395) and Static~C0 (0.382) yields
+$p = 0.105$ (two-sided exact test, 86~discordant pairs).  The 1.3~pp
+margin is not statistically significant at $\alpha = 0.05$ and translates
+to 16~additional correctly-routed queries out of 1{'}199.  This indicates a
+structural ceiling, not a failure of any individual model.  E2's metric-selection sweep reinforces this: across
+35 label definitions (7 metric subsets $\times$ 5 thresholds), only
+fc~+~faith at $\tau = 0.7$ produces a positive margin over Static~C0.
+All other combinations either collapse to the baseline or track below
+it, indicating that the labels themselves carry noise from imperfect
+quality metrics.
+
+\paragraph{Lambda as evidence.}
+The $\lambda$ analysis in Section~\ref{subsec:strategy-survey} reinforces
+this interpretation.  At $\lambda = 0$ (no energy penalty), all models
+achieve 0.28--0.35---worse than Static~C0.  Performance rises only as
+$\lambda$ increases toward 1.50, which pushes selections toward cheap
+configurations unless the classifier is confident.  In practice, this
+amounts to a soft version of ``always pick C0'': the utility function,
+not the classifier, drives accuracy above baseline.  The ML model's
+marginal contribution is the 1--2~pp it adds on top of the $\lambda$-driven
+default.
+
+\paragraph{Weak pre-execution signal.}
+The strongest feature--label association is Cramér's $V = 0.152$
+(\texttt{q\_has\_logical\_operator}, Section~\ref{subsec:features-signal}).
+Cross-validated regression on all 23~features yields
+$R^2 \approx 0$.  The features capture query-level properties---length,
+structure, named entities---but not the query--document interactions that
+determine which pipeline modules help.
+
+\paragraph{Small quality differences.}
+Factual correctness varies by less than 0.03~points across
+\{C0, C2, C3, C6\}.  When the quality surface is nearly flat, any
+classifier faces a low signal-to-noise ratio.  The 95\% confidence interval
+within a single configuration covers most of the cross-configuration range.
+
+\paragraph{Module-activation vs.\ model routing.}
+The quality gap between configurations (2--4~pp) is an order of magnitude
+smaller than the gap between models in model routing (10--30~pp),
+fundamentally limiting the routing signal.
+
+\paragraph{The information gap.}
+The gap between the oracle (100\%) and the best router (39.5\%) quantifies
+the information that exists at retrieval time but is invisible before
+execution.  E3 confirmed this directly: even after observing
+retrieval-quality statistics, the Stage~2 classifier achieves
+AUC $\approx 0.53$ for predicting reranking need---barely above random.
+
+Section~\ref{subsec:ceiling-interpretation} discusses the implications of
+these observations.
+
+
+% \subsection{Chapter Summary}
+% \label{subsec:ch7-summary}
+
+% Five routing strategies and four controlled experiments were evaluated
+% on 1{'}200~HotpotQA queries using 5-fold cross-validation over the
+% four no-HyDE configurations.  Three findings emerge:
+
+% \begin{enumerate}
+%     \item All approaches converge to a config accuracy of 0.38--0.40,
+%           bounded by a structural ceiling.  No combination of features,
+%           quality metrics or model architecture breaks through.
+%     \item The highest config accuracy observed (0.397, E4 cascade)
+%           exceeds Static~C0 by 1.5~pp---a gain within cross-validation
+%           noise.  No approach produces a statistically meaningful
+%           improvement over the cheapest-configuration baseline.
+%     \item The energy penalty parameter $\lambda$ is more impactful than
+%           the choice of classifier, feature set or label definition.
+%           High $\lambda$ values enforce cheap defaults unless the quality
+%           signal is strong, effectively implementing a soft version of
+%           Static~C0.
+% \end{enumerate}
+
+% The ceiling is signal-limited, not model-limited.  Module-activation
+% routing operates on a nearly flat quality surface where pre-execution
+% features cannot capture the query--document interactions that determine
+% which pipeline modules help.
+% Chapter~\ref{sec:discussion} interprets these findings and discusses
+% their implications for future research.

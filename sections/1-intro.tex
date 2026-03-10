@@ -1,0 +1,127 @@
+\newpage
+\section{Introduction}
+\label{sec:intro}
+
+Chatbot assistants powered by \emph{large language models} (LLMs) have
+transformed how users access and interact with information. Since the early
+2020s, adoption has grown rapidly. By September 2025, one of the largest 
+foundation labs reported over 700 million weekly active users generating billions 
+of messages per week. Usage is particularly concentrated among 18--25-year-olds, 
+who account for roughly 46\% of all messages~\cite{chatgptusage2025}. This youth 
+adoption suggests a structural shift in how knowledge is queried and sought:
+natural language interaction increasingly complements traditional search
+interfaces such as folder hierarchies or keyword-based matching.
+
+Most widely used LLM assistants are cloud-hosted and operated by third
+parties. While convenient, this architecture raises important concerns.
+Sensitive organisational data may leave controlled environments and the
+cost of access depends on external providers whose pricing and availability
+are not guaranteed. 
+
+For many organisations, these considerations make local deployment
+attractive. Running language models on controlled infrastructure preserves
+data ownership and reduces dependence on external services.
+
+However, a language model alone is insufficient for many local applications.
+Its knowledge is largely fixed at training time and does not
+include private documents, internal procedures or other organisation-specific
+information. Conversely, a document database alone does not provide an
+interactive interface for exploring knowledge.
+
+\emph{Retrieval-Augmented Generation} (RAG) systems address this limitation
+by combining both components: given a user query, the system retrieves
+relevant information from internal sources and provides it as context for
+the model’s response.
+
+\begin{figure}[h!]
+    \centering
+        \centering
+        \includegraphics[width=0.5\textwidth]{rag-principle.png}
+        \caption{Retrieval-augmented generation overview.}
+        \label{fig:rag-principle}
+\end{figure}
+
+\subsection{Motivation}
+
+Deploying language models locally also changes the underlying cost
+structure. Instead of per-call access to cloud APIs,
+organisations must operate their own computational infrastructure.
+
+While training large models requires substantial computational resources,
+it occurs relatively infrequently. In contrast, inference---the repeated
+execution of the model for user queries---occurs continuously and therefore
+dominates operational cost in many deployments. Industry analyses confirm
+the growth: as training capabilities mature, inference will represent the
+largest share of compute demand and operational expenditure in deployed
+AI systems~\cite{inferenceshift2025, morganstanleyinference2025}.
+
+Advanced RAG pipelines often include optional modules intended to improve
+retrieval or answer quality. These may involve query expansion,
+hybrid search or reranking components. In practice, such modules are
+frequently enabled in static configurations where every query triggers
+the full pipeline regardless of its complexity.
+
+This design is simple and performance-oriented, but implicitly assumes that
+additional computation is always worth the cost. In local deployments with
+fixed hardware resources, this assumption can become inefficient.
+
+Despite the growing deployment of RAG systems, their operational efficiency,
+particularly the energy cost of modular pipelines, remains relatively
+underexplored.
+
+\subsection{Problem Statement}
+
+This thesis studies RAG pipelines from a system perspective with energy as
+a first-class metric. The central hypothesis is that \textbf{not all queries
+require the same RAG modules} and that \textbf{selectively activating
+computationally expensive modules can reduce energy consumption while
+preserving acceptable answer quality}.
+
+A deeper question underlies this hypothesis: can a router decide which
+modules to activate \emph{before} observing their output?  If the
+information needed to route is produced by the very computation that
+routing aims to skip, pre-execution routing faces a structural ceiling.
+We investigate whether this circular dependency holds for module-level
+activation in RAG systems.
+
+\subsection{Research Objectives}
+
+To test these hypotheses, we
+(i) design a measurement framework for distributed RAG energy attribution,
+(ii) quantify the energy--quality trade-offs of optional modules under
+controlled configurations,
+(iii) formalize per-query configuration control as an optimization problem
+and (iv) systematically evaluate routing strategies to determine the
+achievable energy savings frontier.
+
+\subsection{Contributions}
+
+The main contributions of this thesis are:
+
+\begin{itemize}
+    \item \textbf{Contribution 1}: An energy measurement framework for distributed RAG
+          systems that attributes cost per module, per node and per pipeline
+          stage, reusable for modular RAG deployments.
+
+    \item \textbf{Contribution 2}: Empirical evidence that always-on module activation is
+          inefficient, with energy costs spanning 5.6$\times$ for quality
+          differences below 0.06 points across eight configurations.
+
+    \item \textbf{Contribution 3}: A systematic routing investigation across eight
+          experiments (five strategies and three explorations) that
+          quantifies the signal boundary for pre-execution module
+          prediction, showing that query-only features provide weak
+          discriminative power for module-level configuration control.
+
+    \item \textbf{Contribution 4}: Characterisation of the oracle routing ceiling (75\%
+          energy savings in the full configuration space, reduced to 19\%
+          in the non-HyDE space tested for routing) and quantification of
+          the information gap between oracle (100\% config accuracy) and
+          achievable pre-execution routing (39.5\%).
+\end{itemize}
+
+Contributions~1 and~2 provide the measurement infrastructure and empirical
+evidence.  Contributions~3 and~4 constitute the central finding: a
+characterised structural ceiling for pre-execution module routing, explained
+by a circular dependency between routing decisions and pipeline outputs.
+

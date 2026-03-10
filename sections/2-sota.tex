@@ -1,0 +1,463 @@
+\newpage
+\section{State of the Art}
+
+
+% Design principle for Chapter 2: Progressive funnel from broad RAG landscape → energy measurement → adaptive computation → module-level routing gap.
+% Reader takeaway: "I understand the RAG design space, how energy is measured in ML systems, and why module-level routing under energy constraints is unexplored."
+
+
+% ============================================================================
+% 2.1 — RAG: Evolution and Architecture
+% ============================================================================
+\subsection{RAG Architectures}
+\label{sec:architecture}
+
+\subsubsection{Core Components}
+% --- 2.1.1 Core Pipeline ---
+
+Retrieval-Augmented Generation (RAG) systems link language models with content from an 
+external knowledge source at inference time~\cite{rag2020}.
+Large language models are trained once on public data; 
+adapting this knowledge after training remains challenging. 
+RAG systems address this limitation by retrieving relevant content 
+from an external knowledge base to contextualize the model when a 
+query arrives.
+
+
+\begin{figure}[h!]
+    \centering
+        \centering
+        \includegraphics[width=0.9\textwidth]{chart-rag-detail2.png}
+        \caption{Core RAG components and their interactions}
+        \label{fig:flow-rag-baby}
+\end{figure}
+
+Figure~\ref{fig:flow-rag-baby} illustrates the core components and their interactions.
+A minimal RAG pipeline is composed of three core components:
+\begin{enumerate}
+    \item An \emph{embedding model} that transforms an input query into a dense vector
+    representation.
+    \item A \emph{vector database} that stores indexed document representations and
+    executes similarity search against the query vector, returning a ranked list of
+    candidate passages.
+    \item A \emph{large language model} that receives the query together with the retrieved
+    passages and generates the final response.
+\end{enumerate}
+
+The embedding step translates text into a vector format that enables efficient 
+similarity search against the database, which stores documents in the same vector 
+space. Embedding models are typically language models optimized for semantic 
+search tasks.
+
+From a functional perspective, retrieval serves as a mechanism for grounding and 
+constraining generation: it can improve relevance, factual accuracy and reduce
+hallucination rates. At a high level, the execution flow follows a simple sequence:
+
+\begin{figure}[h]
+    \centering
+        \centering
+        \includegraphics[width=0.85\textwidth]{flow-rag-simple-bw.png}
+        \caption{Simple RAG sequence-flow: Embedding $\rightarrow$ Retrieval 
+        $\rightarrow$ Generation}
+        \label{fig:flow-rag-simple}
+\end{figure}
+
+A RAG system is best understood as an integrated pipeline rather than a single model. 
+Its behavior and performance result from the interaction of multiple components, each 
+with distinct computational and latency costs. System-level design choices therefore 
+directly affect both output quality and resource consumption.
+
+This thesis focuses on the inference behavior of RAG systems, i.e., 
+the operational phase in which the system processes user queries and generates answers. 
+Training procedures, document ingestion and model adaptation are not actively studied.
+
+% --- 2.1.2 Enhancement Modules in Advanced RAG ---
+
+\subsubsection{Advanced Enhancements}
+
+The core pipeline can produce an answer for any query. Since its 
+introduction in 2020~\cite{rag2020}, subsequent research has proposed 
+numerous extensions to improve retrieval and answer quality.
+Structurally, enhancements fall into two categories:
+
+\begin{itemize}
+    \item \emph{Modify an existing stage}: for example, switching retrieval 
+    from dense to hybrid changes how retrieval operates without adding a new pipeline step.
+    \item \emph{Add a new stage}: for example, query expansion inserts 
+    an additional model call before retrieval.
+\end{itemize}
+
+This distinction matters for energy analysis: modifying a stage changes its cost profile, 
+while adding a stage 
+introduces an entirely new cost that was previously absent.
+% These improvements can three phases: query formulation, retrieval, and post-retrieval 
+% refinement.
+
+\paragraph{Query Enhancement (adds a stage before retrieval).}
+These methods reformulate or enrich the query before it searches for context. 
+HyDE~\cite{hyde2023} generates a hypothetical answer and embeds it 
+as the query representation, bridging 
+the vocabulary gap between short queries and stored documents. 
+Related approaches include: 
+
+\begin{itemize}
+    \item Step-Back Prompting~\cite{stepback2023} abstracts the query into a 
+    higher-level question about underlying principles before retrieval. 
+    \item Query Rewriting~\cite{queryrewriting2023} reformulates the query 
+    into a more retriever-friendly form.
+    \item Multi-query approaches generate several reformulations and 
+    fuse their retrieval results via Reciprocal Rank Fusion.
+    \item For multi-hop questions, query decomposition frameworks such as 
+    IRCoT~\cite{ircot2022} interleave retrieval with chain-of-thought
+    reasoning, breaking complex queries into sequential sub-queries.
+\end{itemize}
+
+All query enhancement methods share a cost property: they add at least 
+one model call before retrieval begins.
+
+
+\paragraph{Retrieval Strategy (modifies the retrieval stage).}
+Rather than adding stages, retrieval improvements change \emph{how} the existing retrieval stage 
+operates. Three main approaches exist:
+\begin{itemize}
+    \item \emph{Sparse retrieval} matches on keywords without embeddings. 
+    (Classic: BM25~\cite{bm252009}, Modern: SPLADE~\cite{splade2021})
+    \item \emph{Dense retrieval} embeds queries and documents into a shared 
+    vector space and retrieves by similarity. Advances include late-interaction 
+    models (ColBERTv2~\cite{colbertv2}) that compute token-level similarity 
+    for higher accuracy and variable-dimension embeddings 
+    (Matryoshka~\cite{matryoshka2022}) that allow coarse-to-fine search.
+    \item \emph{Hybrid retrieval} combines dense and sparse signals 
+    via score fusion, capturing both semantic and lexical relevance. 
+    Reciprocal Rank Fusion (RRF)~\cite{rrf2009} is the standard 
+    merging strategy. RAG-Fusion~\cite{ragfusion2023} extends this 
+    idea by generating four to five query variations and fusing their 
+    retrieval results into a single ranked list.
+\end{itemize}
+% At the index level, vector quantization techniques such as RaBitQ~\cite{rabitq2024} compress stored 
+% embeddings by up to 32$\times$ with bounded recall loss. These modifications change the retrieval cost 
+% profile (e.g.\ hybrid is slightly more expensive than dense-only) but do not add new pipeline stages.
+
+\paragraph{Post-Retrieval Refinement (adds or modifies stages after retrieval.)}
+After retrieval, additional processing can improve the context provided to generation. 
+\begin{itemize}
+    \item \emph{Reranking} uses a cross-encoder~\cite{nogueira2019} to reorder 
+    candidates by relevance, keeping only the top-$n$ passages.
+    \item \emph{Context compression}~\cite{llmlingua2023} removes low-information 
+    tokens from retrieved passages, reducing prompt length and noise.
+    \item \emph{Strategic reordering}~\cite{lostmiddle2023} rearranges 
+    passages to place the most relevant at the beginning and end of the 
+    prompt, counteracting the ``lost-in-the-middle'' degradation observed in LLMs.
+    \item \emph{Post-retrieval verification} (Self-RAG~\cite{selfrag2024}) 
+    generates reflection tokens to assess whether retrieved context is relevant 
+    and supported, discarding poor chunks before generation. 
+\end{itemize}   
+
+Danilevsky et al.~\cite{llmintrinsics2025} implement individual RAG functions ; reranking, 
+hallucination detection, citation generation, as separate LoRA adapters that can be composed or omitted per 
+query, illustrating that these functions can be composed independently.
+
+\medskip
+
+These enhancements share a structural property: each can be independently enabled or disabled; when implemented
+with this logic. Each has a measurable cost (latency, energy) and a conditional
+benefit that depends on the query and context. 
+Whether a technique adds a new stage or modifies an existing one, the cost is incurred for every query when 
+the module is enabled (regardless of whether that specific query benefits from it). This modular, additive 
+structure is central to the design space explored in this thesis.
+
+
+% --- 2.1.3 From Static to Dynamic ---
+
+\subsubsection{Modular RAG}
+
+In most deployments, module activation is defined through static configuration
+at deployment time. The same set of modules is applied to all queries regardless
+of their complexity or expected benefit. 
+This ``always-on'' design favors simplicity and predictability. 
+Usually justified by a quality-first perspective in which the cost 
+of executing all modules is assumed acceptable as long as answer quality improves.
+
+Recent work illustrates this trend: LLM Intrinsics~\cite{llmintrinsics2025} demonstrates 
+composable LoRA adapters for individual RAG functions and knowledge graph-enhanced 
+systems like LightRAG~\cite{lightrag2025} introduce additional optional retrieval 
+strategies. Recent commercial systems have also adopted automatic routing mechanisms
+that select among models based on inferred query complexity, indicating growing
+interest in adaptive execution beyond research settings.
+
+Existing work on RAG systems focuses primarily on retrieval quality and answer 
+relevance. Efficiency considerations, when present, are typically addressed indirectly 
+through faster models or reduced model size. The cost of always-on module activation 
+is rarely questioned: it is treated as a deployment-time decision, not a runtime 
+optimization variable. The following section reviews how energy consumption is 
+measured and analyzed in machine learning systems.
+
+
+
+% ============================================================================
+% 2.2 — The Energy Anatomy of RAG
+% ============================================================================
+\subsection{Energy in ML Systems}
+\label{subsec:energy}
+
+% Design principle for 2.2: Block A = energy as RAG-specific concern; Block B = stage-level cost asymmetry; Block C = measurement-to-control bridge.
+% Reader takeaway: "RAG stages span orders of magnitude in energy cost. Component-level measurement makes each stage a controllable variable."
+
+% --- Block A: Energy as a RAG-specific concern ---
+
+Energy consumption is a distinct metric from latency or throughput. A system
+can be fast yet energy-inefficient or slow but power-frugal. For organizations
+running continuous inference workloads, operational costs scale directly with power
+consumption~\cite{energyml2024}. On-premise deployments face hard power budgets
+and thermal constraints that latency metrics alone do not capture.
+
+RAG systems have a heterogeneous energy profile that single-model benchmarks miss.
+Data movement across retrieval nodes and computation on GPU-bound generation run on
+different hardware with different power characteristics. Standard inference metrics
+(tokens per second, time to first token) measure the language model in isolation.
+They do not capture the distributed cost of embedding, retrieval or orchestration.
+Recent analysis confirms this: in RAG-based systems with agentic control flow, CPU-bound
+operations account for 90\% of end-to-end latency and 44\% of total energy
+consumption~\cite{cpucentric2025}. This distribution differs from what single-model benchmarks would suggest.
+
+% --- Block B: The asymmetry of RAG stages ---
+
+Not all pipeline stages carry equal cost. A keyword lookup (BM25) consumes millijoules
+on a CPU. Generating a hypothetical answer for query expansion (HyDE) requires a full
+LLM inference pass, consuming orders of magnitude more energy on a
+GPU~\cite{rago2025}. Embedding a query takes milliseconds; a cross-encoder reranking
+pass adds moderate cost; switching from dense to hybrid retrieval adds near-zero marginal
+energy. 
+% Chapter~\ref{sec:baseline_analysis} quantifies these per-stage costs.
+
+% This asymmetry is structural: it follows from combining cheap information retrieval
+% operations with expensive neural generation within a single request. 
+Applying all stages uniformly to every query drives unnecessary cost when some
+stages do not improve the answer for that query. To exploit this cost asymmetry, 
+cost must first be measurable per stage.
+
+% --- Block C: Measurement-to-control bridge ---
+
+\begin{figure}[h!]
+    \centering
+        \centering
+        \includegraphics[width=0.65\textwidth]{energy-levels.png}
+        \caption{Energy measurement levels: system, component, and software}
+        \label{fig:energy-levels}
+\end{figure}
+
+Energy measurement occurs at three levels:
+\begin{itemize}
+    \item \textbf{System-level} captures total power at the wall outlet; ground truth,
+    but no attribution to individual components or operations.
+
+    \item \textbf{Component-level} uses hardware counters: Intel RAPL provides CPU and
+    DRAM energy; NVIDIA NVML exposes GPU power via \texttt{nvidia-smi}. Frameworks such as
+    MELODI~\cite{melodi2025} and APEX+~\cite{apexplus2025} build on these interfaces.
+    Thamm and Leser~\cite{raplenergy2025} evaluate RAPL measurement strategies in
+    distributed environments. This is directly relevant to multi-node RAG deployments.
+
+    \item \textbf{Software-level} estimates approximate energy from proxy metrics (FLOPs,
+    memory accesses, execution time) but introduce modeling error.
+\end{itemize}
+
+Component-level measurement provides an appropriate granularity for RAG systems. It attributes energy
+to the CPU package and GPU device on each participating node. In a RAG pipeline, this
+means energy can be attributed to query expansion, retrieval, reranking and generation
+separately. If cost is measurable per stage, each stage becomes a controllable variable.
+This enables component-level optimizations.
+
+Guo et al.~\cite{keplerenergy2026} conduct a controlled experiment on energy reduction
+in RAG systems, confirming that configuration choices measurably affect total consumption.
+Their work evaluates fixed technique combinations rather than per-query adaptation. Single-model optimizations such as quantization and attention kernel
+optimization~\cite{flashattn2022} reduce energy within one serving framework.
+T. Burghardt and S. Chou~\cite{burghardt2025} applied quantization and fine-tuning to the
+generation model of the same knowledge management system used in this thesis, reducing
+memory by 39\% and inference time by 57\%; targeting the most energy-intensive RAG
+stage. However, these techniques are model-specific: each new model generation requires
+repeating the compression and tuning pipeline.
+
+
+% ============================================================================
+% 2.3 — Adaptive Orchestration and Module Routing
+% ============================================================================
+\subsection{Adaptive Orchestration}
+\label{subsec:adaptive}
+
+% Design principle for 2.3: Block A = conditional computation paradigms; Block B = model routing ("static prompt" limitation); Block C = adaptive RAG (quality-first limitation); Block D = module-level routing definition; Block E = research gap.
+% Reader takeaway: "Conditional execution is proven. Model routers ignore pre-generation cost. Pipeline routers optimize quality, not energy. Module-level routing under energy constraints is unexplored."
+
+
+% --- 2.3.1 Conditional Computation Paradigms ---
+
+\subsubsection{Conditional Computation}
+\label{subsec:conditional}
+
+Conditional computation addresses the inefficiency of the full computational pipeline for 
+every input by selectively executing 
+parts of a system. It does so based on input characteristics or intermediate signals~\cite{moe2022}. 
+The challenge lies in deciding \emph{when} to activate additional computation and 
+\emph{when} to skip it, without degrading output quality.
+
+Several forms of adaptive execution have been explored:
+\begin{itemize}
+    \item \textbf{Early exit mechanisms} allow deep networks to terminate inference at intermediate layers once sufficient confidence is reached, avoiding computation in deeper layers~\cite{branchynet2016, deebert2020}.
+    \item \textbf{Mixture-of-experts (MoE)} models route each input to a subset of specialized submodels, activating only part of the network per input~\cite{moe2022}.
+    \item \textbf{Cascaded systems} process inputs using a sequence of models with increasing complexity. Inexpensive models handle easy cases; only difficult inputs are forwarded to costly ones. Dekoninck et al.~\cite{unifiedrouting2025} formalize both routing and cascading as instances of linear cost-quality optimization and prove that cascade policies dominate fixed-threshold cascading.
+\end{itemize}
+
+These mechanisms share a common structure: a lightweight decision function gates 
+access to expensive computation. Decision logic is typically implemented using heuristics, 
+confidence thresholds or lightweight classifiers. Evaluation in prior work primarily 
+targets accuracy--latency trade-offs, with energy efficiency treated indirectly through 
+faster inference or reduced computation. Adaptation is usually applied within 
+a single model or architecture rather than across multiple system components.
+
+
+% --- 2.3.2 LLM Routing: The "Static Prompt" Limitation ---
+
+\subsubsection{Model Routing}
+
+A direct application of conditional computation to language models is \emph{model routing}: 
+given a query, select which LLM should answer it. The query remains unchanged; only the 
+answering model varies. Theoretical analysis shows that an oracle router, one that perfectly 
+predicts model performance, can match the quality of the best model in the pool while 
+reducing inference cost by 50--85\%~\cite{routerbench2024}.
+
+Several frameworks operationalize this idea. RouteLLM~\cite{routellm2025} trains a 
+Bradley-Terry preference model combined with matrix factorization to predict the win 
+probability of a strong model over a weak one, using query embeddings as input. 
+FrugalGPT~\cite{frugalgpt2023} implements cascading with agreement-based stopping: a 
+cheap model answers first and its response is accepted if confidence exceeds a 
+threshold; otherwise, the query escalates to a more expensive model, achieving up 
+to 98\% cost reduction. Dekoninck et al.~\cite{unifiedrouting2025} provide theoretical 
+grounding by formalizing model selection as linear cost-quality optimization.
+
+The predictor signals used in model routing span multiple levels of complexity. 
+Dense query embeddings capture semantic domain and topic~\cite{routellm2025}. Explicit 
+features (token count, constraint density, code markers, question type) provide 
+interpretable complexity indicators. Uncertainty-based methods use model confidence as 
+a routing signal: Zhang et al.~\cite{uncertaintyrouting2025} route queries based on 
+semantic entropy, a measure that clusters sampled responses by meaning before computing 
+uncertainty and report 4--8\% accuracy gains over preference-trained routers on RouterBench. 
+Predictor quality bounds routing quality: a router can only be as good as its ability 
+to estimate task difficulty before execution.
+
+These routers share a structural assumption: the prompt is already prepared. 
+They select which model generates the answer but do not account for the energy 
+spent \emph{constructing} that prompt, i.e., the Joules consumed by 
+query expansion, retrieval or reranking before generation begins.
+Usually, they optimize generation cost, not pipeline cost.
+
+
+% --- 2.3.3 Adaptive RAG: The State of the Art ---
+
+\subsubsection{Adaptive RAG}
+\label{subsec:adaptive-rag}
+
+Model routing selects \emph{which} model answers a query. A different line of 
+work adapts \emph{how} the query is processed within the pipeline; deciding whether 
+to retrieve, how to retrieve and what post-processing to apply. The pipeline itself 
+becomes the design space.
+
+Adaptive-RAG~\cite{adaptiverag2024} classifies queries by complexity (simple, medium, 
+complex) and routes them to different retrieval strategies accordingly. 
+Self-RAG~\cite{selfrag2024} introduces special reflection tokens (Retrieve, 
+IsRelevant, IsSupported, IsUseful) that the model generates during inference to 
+decide at each step whether retrieval is needed and whether retrieved context is 
+relevant. This enables fine-grained control but introduces token overhead. CRAG 
+(Corrective RAG)~\cite{crag2024} evaluates retrieved document relevance with a 
+lightweight evaluator and triggers web search as a fallback when confidence is 
+low. This is a strategy that can cause energy spikes when the fallback is invoked.
+
+At the routing layer, RAGRouter~\cite{ragrouter2025} uses contrastive learning to 
+match queries with the LLM configuration that produces the best answer given retrieved 
+documents, achieving 3.29\% quality gains over static routing. 
+UniRoute~\cite{uniroute2025} takes a training-free approach, clustering queries 
+and routing based on cluster-level performance statistics, enabling zero-shot 
+generalization to unseen models. DAAO~\cite{daao2025} applies difficulty-aware 
+orchestration to agent workflows, achieving 6$\times$ cost reduction by matching 
+queries to appropriately-sized models.
+
+These systems are quality-first routers: when uncertain, they escalate computation 
+to maximize answer quality. CRAG exemplifies this pattern: uncertainty triggers web 
+search, causing an energy spike with no budget awareness. None use measured energy 
+(Joules) as the optimization objective. Module activation (whether HyDE should be 
+enabled, whether reranking is worth its cost for a specific query) is not treated as 
+the decision variable. These systems escalate computation to maximize quality.
+The present work instead constrains computation under an energy budget.
+
+
+% --- 2.3.4 Defining Module-Level Routing ---
+
+\subsubsection{Module-Level Routing}
+
+This thesis defines module-level routing: not model selection (choosing between LLMs),
+not retrieval gating (deciding whether to retrieve), but \emph{configuration 
+vector control}; selecting the intensity of the pipeline per query. The decision 
+variable is a configuration vector: \{HyDE: on/off, reranking: on/off, search type: 
+dense/hybrid\}. Each query receives multiple independent binary decisions, not a 
+single model choice.
+
+Module-level routing differs from existing approaches in three ways. First,
+energy is the primary objective (minimize Joules), with quality as a constraint---not 
+the reverse. Second, prediction must happen \emph{before} pipeline execution, using 
+only pre-execution query features (text characteristics, NLP signals, semantic 
+embeddings). Third, the router must be lightweight enough that its own cost is 
+negligible relative to the stages it gates.
+
+
+% --- 2.3.5 Research Gap ---
+
+\subsection{Research Gap}
+
+RAG systems are modular and expose optional modules that can be independently
+toggled (Section~\ref{sec:architecture}). Energy is measurable per stage and stages vary by orders
+of magnitude in cost (Section~\ref{subsec:energy}). Conditional computation and query routing
+are proven paradigms for reducing unnecessary work, with mature implementations
+for model selection and emerging ones for pipeline-level adaptation
+(Sections~\ref{subsec:conditional}--\ref{subsec:adaptive-rag}).
+
+Despite these advances, module-level activation in RAG pipelines under explicit 
+energy constraints remains relatively unexplored. Most existing routers optimize accuracy, latency or 
+cost-per-token but do not address the energy cost of optional pipeline stages. 
+Existing energy-aware methods optimize individual models but do not cross component 
+boundaries. Existing work typically addresses these aspects separately:
+modular RAG design, component-level energy measurement and adaptive computation
+are not often combined to optimize module activation per query under energy constraints. 
+This gap motivates the system-level approach developed in this thesis.
+
+
+
+% ============================================================================
+% 2.4 — Quality Evaluation in RAG
+% ============================================================================
+\subsection{Quality Evaluation}
+\label{subsec:quality-eval}
+
+Evaluating RAG output quality is a multi-dimensional problem. Deterministic metrics 
+such as Exact Match, Token F1 and ROUGE-L capture surface-level overlap between 
+generated answers and reference answers but miss semantic equivalence. Two answers 
+can convey the same meaning using different words. Retrieval-specific metrics 
+(R-Precision, Recall@$k$) evaluate the retrieval stage in isolation without assessing 
+end-to-end answer quality.
+
+LLM-as-judge approaches address these limitations by using a language model to
+evaluate answer quality along specific dimensions. RAGAS~\cite{ragas2023} provides
+automated evaluation along four axes: faithfulness (is the answer grounded in retrieved
+context?), factual correctness (does the answer match the reference?), context precision
+and context recall. A recent survey of 582~papers confirms that traditional metrics
+(F1, EM, ROUGE) still dominate RAG evaluation, but LLM-based methods are adopted at an
+increasing rate~\cite{ragevalsurvey2025}.
+
+Evaluator model choice affects reliability. Wang~et~al.~\cite{vrageval2024}
+report that GPT-4 achieves 82.6\% agreement with human annotations on
+binary accept/reject decisions, whereas an 8B-parameter model achieves
+only 36.8\%. Smaller evaluators tend to compress scores toward a
+single label, reducing discriminative power. The evaluator model must
+also differ from the generator to avoid self-evaluation bias, where
+models favour outputs that match their own generation
+patterns~\cite{vrageval2024}.
+
+The choice of evaluation framework, evaluator model and bias-mitigation
+strategy used in this thesis is detailed in Chapter~\ref{sec:method_protocol}.
